@@ -1,0 +1,718 @@
+import { useCallback, useState } from 'react';
+import { useApp } from './AppContext';
+import { LOGO_DATA_URI } from './logo';
+import { signOutFirebase } from './auth';
+import { generateDocx } from './docxGen';
+import {
+  downloadClientTemplate, downloadDubaiTemplate, downloadInvoiceTemplate,
+  exportInvoicesToExcel, normaliseBranch, pickCol, readSheetRows
+} from './excelOps';
+import { buildRestorePrompt, downloadBackupFile, parseBackupFile } from './backupOps';
+import { fmtMoneyForRegion, formatExcelDate, nextAvailableNumber, pad, regionOf, uid } from './utils';
+
+import Dashboard from './components/Dashboard';
+import InvoiceListPage from './components/InvoiceListPage';
+import ClientsPage from './components/ClientsPage';
+import BulkImportPage from './components/BulkImportPage';
+import UsersPage from './components/UsersPage';
+import SettingsPage from './components/SettingsPage';
+import InvoiceModal from './components/InvoiceModal';
+import ClientModal from './components/ClientModal';
+import ClientBulkModal from './components/ClientBulkModal';
+import UserModal from './components/UserModal';
+import UserDetailsModal from './components/UserDetailsModal';
+import TdsModal from './components/TdsModal';
+
+const NAV = [
+  { page: 'dashboard', label: 'Dashboard', perm: 'dashboard' },
+  { page: 'invoices', label: 'Invoices', perm: 'invoices' },
+  { page: 'proforma', label: 'Proforma', perm: 'proforma' },
+  { page: 'clients', label: 'Clients', perm: 'clients' },
+  { page: 'import', label: 'Bulk Import', perm: 'import' },
+  { page: 'users', label: 'Users & Permissions', perm: 'admin_only' },
+  { page: 'settings', label: 'Settings', perm: 'settings' }
+];
+
+export default function MainApp() {
+  const {
+    currentUser, users, stateRef,
+    saveInvoices, saveClients, saveUsers, saveNumbering,
+    reloadInvoices, reloadClients, reloadUsers,
+    buildBackupPayload, restoreBackup,
+    clearSession, userCanAccess, showToast
+  } = useApp();
+
+  const [page, setPage] = useState('dashboard');
+  // Set when a dashboard card deep-links into the invoice list with a filter.
+  const [invoiceStatusFilter, setInvoiceStatusFilter] = useState('');
+
+  const [invoiceModal, setInvoiceModal] = useState({ open: false, docType: 'invoice', editing: null });
+  const [clientModal, setClientModal] = useState({ open: false, editing: null });
+  const [clientBulk, setClientBulk] = useState({ open: false, rows: [] });
+  const [userModal, setUserModal] = useState({ open: false, email: null });
+  const [userDetails, setUserDetails] = useState({ open: false, email: null });
+  const [tdsOpen, setTdsOpen] = useState(false);
+  const [pendingImport, setPendingImport] = useState(null);
+
+  const isAdmin = currentUser && currentUser.role === 'admin';
+  const perms = (currentUser && currentUser.permissions) || {};
+
+  /* ---------------- NAVIGATION ---------------- */
+  const navigate = useCallback(async (next, statusFilter) => {
+    if (!userCanAccess(next)) {
+      showToast('You do not have permission to access this section', 'error');
+      return;
+    }
+    setPage(next);
+    if (next === 'invoices') setInvoiceStatusFilter(statusFilter || '');
+    // Refresh shared data so this tab sees anything created in other sessions.
+    try {
+      if (next === 'users') await reloadUsers();
+      else if (next === 'dashboard') await Promise.all([reloadUsers(), reloadInvoices(), reloadClients()]);
+      else if (next === 'invoices' || next === 'proforma') await Promise.all([reloadInvoices(), reloadClients()]);
+      else if (next === 'clients') await reloadClients();
+    } catch (e) { console.warn('Refresh failed', e); }
+  }, [userCanAccess, showToast, reloadUsers, reloadInvoices, reloadClients]);
+
+  async function doSignOut() {
+    // Drop the local session first — the auth observer restores an admin session
+    // from storage, so it must already be gone when Firebase reports the sign-out.
+    clearSession();
+    await signOutFirebase();
+  }
+
+  /* ---------------- INVOICES ---------------- */
+  const openInvoiceForm = (docType) => setInvoiceModal({ open: true, docType, editing: null });
+
+  const editInvoice = (id) => {
+    const d = stateRef.current.invoices.find((x) => x.id === id);
+    if (!d) return;
+    setTdsOpen(false);
+    setInvoiceModal({ open: true, docType: d.docType, editing: d });
+  };
+
+  async function deleteInvoice(id) {
+    if (!confirm('Delete this document? This cannot be undone.')) return;
+    await saveInvoices(stateRef.current.invoices.filter((d) => d.id !== id));
+    showToast('Deleted');
+  }
+
+  async function downloadInvoice(id) {
+    const d = stateRef.current.invoices.find((x) => x.id === id);
+    if (!d) return showToast('Document not found', 'error');
+    try {
+      const fname = await generateDocx(d, stateRef.current.company);
+      showToast('Word doc downloaded: ' + fname);
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to generate Word doc: ' + (err.message || err), 'error');
+    }
+  }
+
+  function exportToExcel(docType) {
+    const list = stateRef.current.invoices.filter((d) => d.docType === docType);
+    if (list.length === 0) return showToast('No data to export', 'warn');
+    exportInvoicesToExcel(list, docType);
+    showToast('Exported');
+  }
+
+  async function saveInvoiceDoc(doc, preview, setBadField) {
+    const isNew = !doc.id;
+    // Reload so we catch invoices created since this tab loaded.
+    const latest = await reloadInvoices();
+
+    const d = { ...doc };
+    if (isNew) d.id = uid();
+    const existing = latest.find((x) => x.id === d.id);
+    d.createdAt = existing ? (existing.createdAt || new Date().toISOString()) : new Date().toISOString();
+
+    // === DUPLICATE PROTECTION ===
+    const clash = latest.find((x) => x.invoiceNo === d.invoiceNo && x.id !== d.id);
+    if (clash) {
+      if (!isNew) {
+        showToast('Invoice number "' + d.invoiceNo + '" already exists for ' + (clash.clientName || 'another invoice') + '. Please use a unique number.', 'error');
+        setBadField('frmInvoiceNo');
+        return;
+      }
+      // New invoice — auto-bump to the next available number on the actual prefix.
+      const n = stateRef.current.numbering;
+      let prefix;
+      if (d.docType === 'proforma') prefix = n.proPrefix;
+      else if (d.branch === 'dubai') prefix = n.invPrefixDbx || 'DSL/26-27/DB-';
+      else if (d.branch === 'pune') prefix = n.invPrefixPune;
+      else prefix = n.invPrefixBlu;
+      if (!d.invoiceNo.startsWith(prefix)) {
+        const m = d.invoiceNo.match(/^(.*?)(\d+)$/);
+        if (m) prefix = m[1];
+      }
+      d.invoiceNo = prefix + pad(nextAvailableNumber(latest, prefix, 1), 3);
+      showToast('Invoice number was bumped to ' + d.invoiceNo + ' to prevent a duplicate.', 'warn');
+    }
+
+    // If the client name isn't in the DB yet, link or create it.
+    let clientList = stateRef.current.clients;
+    if (!d.clientId && d.clientName) {
+      const found = clientList.find((c) => (c.name || '').toLowerCase() === d.clientName.toLowerCase());
+      if (found) {
+        d.clientId = found.id;
+        if (!found.legalName && d.clientLegalName) {
+          clientList = clientList.map((c) => (c.id === found.id ? { ...c, legalName: d.clientLegalName } : c));
+          await saveClients(clientList);
+        }
+      } else {
+        const newClient = {
+          id: uid(),
+          name: d.clientName,
+          legalName: d.clientLegalName || d.clientName,
+          address: d.clientAddress,
+          gstin: d.clientGstin,
+          createdAt: new Date().toISOString()
+        };
+        clientList = [...clientList, newClient];
+        d.clientId = newClient.id;
+        await saveClients(clientList);
+      }
+    }
+
+    const nextInvoices = isNew || !existing
+      ? [...latest, d]
+      : latest.map((x) => (x.id === d.id ? d : x));
+
+    if (isNew) {
+      const n = stateRef.current.numbering;
+      await saveNumbering({
+        ...n,
+        nextInvPune: nextAvailableNumber(nextInvoices, n.invPrefixPune, n.nextInvPune),
+        nextInvBlu: nextAvailableNumber(nextInvoices, n.invPrefixBlu, n.nextInvBlu),
+        nextInvDbx: nextAvailableNumber(nextInvoices, n.invPrefixDbx || 'DSL/26-27/DB-', n.nextInvDbx || 41),
+        nextPro: nextAvailableNumber(nextInvoices, n.proPrefix, n.nextPro)
+      });
+    }
+    await saveInvoices(nextInvoices);
+
+    setInvoiceModal({ open: false, docType: 'invoice', editing: null });
+    showToast('Saved successfully');
+    if (preview) {
+      try {
+        const fname = await generateDocx(d, stateRef.current.company);
+        showToast('Word doc downloaded: ' + fname);
+      } catch (err) {
+        showToast('Failed to generate Word doc: ' + (err.message || err), 'error');
+      }
+    }
+  }
+
+  /**
+   * Reconcile a proforma into a tax invoice. The new invoice inherits the
+   * proforma's line items, client and totals, but gets a fresh branch-specific
+   * number. The proforma is stamped so it can't be converted twice, and the new
+   * invoice keeps a link back to its source.
+   */
+  async function convertProformaToInvoice(proformaId) {
+    const latest = await reloadInvoices();
+    const p = latest.find((x) => x.id === proformaId);
+    if (!p || p.docType !== 'proforma') return showToast('Proforma not found', 'error');
+    if (p.convertedToInvoiceId) {
+      const existing = latest.find((x) => x.id === p.convertedToInvoiceId);
+      return showToast('Already reconciled to ' + (existing ? existing.invoiceNo : '—') + '. Delete the tax invoice first if you need to redo.', 'error');
+    }
+
+    // Proformas all share the PI- prefix; the tax invoice needs its branch series.
+    const branch = p.branch || 'pune';
+    const n = stateRef.current.numbering;
+    let prefix, fallbackCounter;
+    if (branch === 'dubai') {
+      prefix = n.invPrefixDbx || 'DSL/26-27/DB-';
+      fallbackCounter = n.nextInvDbx || 1;
+    } else if (branch === 'bengaluru') {
+      prefix = n.invPrefixBlu;
+      fallbackCounter = n.nextInvBlu;
+    } else {
+      prefix = n.invPrefixPune;
+      fallbackCounter = n.nextInvPune;
+    }
+    const nextNum = nextAvailableNumber(latest, prefix, fallbackCounter);
+    const suggestedNo = prefix + pad(nextNum, 3);
+
+    const inputNum = prompt(
+      'Convert Proforma "' + p.invoiceNo + '" to a Tax Invoice?\n\n' +
+      'Client: ' + p.clientName + '\n' +
+      'Total: ' + fmtMoneyForRegion(p.totalAmount, regionOf(branch)) + '\n\n' +
+      'New tax invoice number:',
+      suggestedNo
+    );
+    if (!inputNum) return;
+    const finalInvoiceNo = inputNum.trim();
+    if (!finalInvoiceNo) return;
+
+    if (latest.some((x) => x.docType === 'invoice' && x.invoiceNo === finalInvoiceNo)) {
+      return showToast('Invoice number "' + finalInvoiceNo + '" already exists. Try a different number.', 'error');
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+    const now = new Date().toISOString();
+    const newInvoice = {
+      ...JSON.parse(JSON.stringify(p)),
+      id: uid(),
+      docType: 'invoice',
+      invoiceNo: finalInvoiceNo,
+      invoiceDate: today,
+      paymentMode: p.paymentMode || (branch === 'dubai' ? 'BANK TRANSFER' : 'NEFT'),
+      status: 'due',
+      amountDueOutstanding: p.totalAmount,
+      dueDate: p.dueDate || today,
+      sourceProformaId: p.id,
+      sourceProformaNo: p.invoiceNo,
+      createdAt: now,
+      updatedAt: now
+    };
+    delete newInvoice.convertedToInvoiceId;
+    delete newInvoice.convertedToInvoiceNo;
+
+    const nextInvoices = latest
+      .map((x) => (x.id === p.id
+        ? { ...x, convertedToInvoiceId: newInvoice.id, convertedToInvoiceNo: finalInvoiceNo, updatedAt: now }
+        : x))
+      .concat(newInvoice);
+
+    // Only advance the counter when the auto-suggested number was accepted.
+    if (finalInvoiceNo === suggestedNo) {
+      const key = branch === 'dubai' ? 'nextInvDbx' : branch === 'bengaluru' ? 'nextInvBlu' : 'nextInvPune';
+      await saveNumbering({ ...n, [key]: nextNum + 1 });
+    }
+    await saveInvoices(nextInvoices);
+    showToast('✓ Reconciled: created tax invoice ' + finalInvoiceNo + ' from ' + p.invoiceNo);
+  }
+
+  /* ---------------- BACKUP / RESTORE ---------------- */
+  function onDownloadBackup() {
+    try {
+      const payload = buildBackupPayload();
+      downloadBackupFile(payload);
+      showToast('Backup downloaded (' + payload._counts.invoices + ' invoices, ' + payload._counts.clients + ' clients, ' + payload._counts.users + ' users)');
+    } catch (e) {
+      console.error('Backup failed', e);
+      showToast('Backup failed: ' + (e.message || e), 'error');
+    }
+  }
+
+  async function onLoadBackup(file) {
+    try {
+      const payload = await parseBackupFile(file);
+      const s = stateRef.current;
+      const current = {
+        invoices: (s.invoices || []).length,
+        clients: (s.clients || []).length,
+        users: (s.users || []).length
+      };
+      if (!confirm(buildRestorePrompt(payload, current))) return;
+      const counts = await restoreBackup(payload.data);
+      showToast('Backup loaded: ' + counts.invoices + ' invoices, ' + counts.clients + ' clients, ' + counts.users + ' users');
+    } catch (e) {
+      console.error('Restore failed', e);
+      showToast('Restore failed: ' + (e.message || e), 'error');
+    }
+  }
+
+  /* ---------------- CLIENTS ---------------- */
+  const openClientForm = () => setClientModal({ open: true, editing: null });
+  const editClient = (id) => setClientModal({ open: true, editing: stateRef.current.clients.find((c) => c.id === id) || null });
+
+  async function saveClientRecord(data) {
+    const editing = clientModal.editing;
+    const list = editing
+      ? stateRef.current.clients.map((c) => (c.id === editing.id ? { ...c, ...data } : c))
+      : [...stateRef.current.clients, { id: uid(), ...data, createdAt: new Date().toISOString() }];
+    await saveClients(list);
+    setClientModal({ open: false, editing: null });
+    showToast('Client saved');
+  }
+
+  async function deleteClient(id) {
+    if (!confirm('Delete this client? Invoices for this client will not be deleted but will lose link.')) return;
+    await saveClients(stateRef.current.clients.filter((c) => c.id !== id));
+    showToast('Client deleted');
+  }
+
+  function onDownloadClientTemplate() {
+    try {
+      downloadClientTemplate();
+      showToast('Template downloaded — fill it in and upload via Bulk Upload');
+    } catch (e) {
+      showToast('Failed to build template: ' + (e.message || e), 'error');
+    }
+  }
+
+  async function handleClientBulkFile(file) {
+    try {
+      const rows = await readSheetRows(file);
+      if (rows.length === 0) throw new Error('Sheet is empty');
+
+      const latest = await reloadClients();
+      const existingGstins = new Set(latest.map((c) => (c.gstin || '').toUpperCase()).filter(Boolean));
+      const existingNames = new Set(latest.map((c) => (c.name || '').trim().toLowerCase()));
+
+      const parsed = rows.map((r, i) => {
+        const name = pickCol(r, 'client_name', 'clientname', 'name');
+        const legalName = pickCol(r, 'legal_name', 'legalname', 'registeredname');
+        const address = pickCol(r, 'address', 'clientaddress', 'addr');
+        const city = pickCol(r, 'city', 'town');
+        const gstin = pickCol(r, 'gstin', 'client_gstin', 'gst').toUpperCase().replace(/[^A-Z0-9]/g, '').substring(0, 15);
+
+        const errors = [];
+        if (name.toLowerCase().startsWith('note:')) {
+          errors.push('comment row, skipped');
+        } else {
+          if (!name) errors.push('client_name missing');
+          if (!address) errors.push('address missing');
+          if (!gstin) errors.push('gstin missing');
+          else if (gstin.length !== 15) errors.push('gstin must be 15 characters');
+          if (name && existingNames.has(name.toLowerCase())) errors.push('client name already exists');
+          if (gstin && existingGstins.has(gstin)) errors.push('gstin already exists');
+        }
+        return { rowNo: i + 2, name, legalName, address, city, gstin, errors, valid: errors.length === 0 };
+      });
+
+      setClientBulk({ open: true, rows: parsed });
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to read file: ' + (err.message || err), 'error');
+    }
+  }
+
+  async function confirmClientBulkImport() {
+    const valid = clientBulk.rows.filter((r) => r.valid);
+    if (valid.length === 0) return showToast('No valid rows to import', 'error');
+
+    const latest = await reloadClients();
+    const existingGstins = new Set(latest.map((c) => (c.gstin || '').toUpperCase()).filter(Boolean));
+    const existingNames = new Set(latest.map((c) => (c.name || '').trim().toLowerCase()));
+
+    const next = [...latest];
+    let added = 0, skippedNow = 0;
+    const now = new Date().toISOString();
+    for (const r of valid) {
+      if (existingGstins.has(r.gstin) || existingNames.has(r.name.toLowerCase())) { skippedNow++; continue; }
+      next.push({ id: uid(), name: r.name, legalName: r.legalName, address: r.address, city: r.city, gstin: r.gstin, createdAt: now });
+      existingGstins.add(r.gstin);
+      existingNames.add(r.name.toLowerCase());
+      added++;
+    }
+    await saveClients(next);
+    setClientBulk({ open: false, rows: [] });
+    let msg = 'Imported ' + added + ' client' + (added === 1 ? '' : 's');
+    if (skippedNow > 0) msg += ' · ' + skippedNow + ' skipped (duplicates added by another user just now)';
+    showToast(msg);
+  }
+
+  /* ---------------- BULK INVOICE IMPORT ---------------- */
+  async function handleExcelUpload(file) {
+    try {
+      const rows = await readSheetRows(file, { cellDates: true });
+      if (rows.length === 0) return showToast('Excel is empty', 'error');
+      setPendingImport(rows);
+    } catch (err) {
+      showToast('Failed to read Excel: ' + err.message, 'error');
+    }
+  }
+
+  async function confirmImport() {
+    if (!pendingImport) return;
+    const nextClients = [...stateRef.current.clients];
+    const nextInvoices = [...stateRef.current.invoices];
+
+    // Rows sharing an invoice_no become one multi-item invoice: shared fields
+    // (client, branch, dates) come from the FIRST row, and each row contributes
+    // one line item.
+    const groups = new Map();
+    const orderedInvoiceNos = [];
+    let skipped = 0;
+    for (const r of pendingImport) {
+      if (String(r.doc_type || '').toUpperCase() === 'NOTE') continue; // template help row
+      if (!r.invoice_no || !r.client_name) { skipped++; continue; }
+      const key = String(r.invoice_no).trim();
+      if (!groups.has(key)) { groups.set(key, []); orderedInvoiceNos.push(key); }
+      groups.get(key).push(r);
+    }
+
+    let added = 0, mergedItems = 0;
+    for (const invoiceNo of orderedInvoiceNos) {
+      const rowsForInvoice = groups.get(invoiceNo);
+      const first = rowsForInvoice[0];
+
+      const branch = normaliseBranch(first.branch);
+      const isDubai = branch === 'dubai';
+      const docType = String(first.doc_type || 'invoice').toLowerCase().includes('pro') ? 'proforma' : 'invoice';
+      const dt = formatExcelDate(first.invoice_date);
+      const dueD = formatExcelDate(first.due_date);
+      const status = String(first.status || 'paid').toLowerCase().includes('due') ? 'due' : 'paid';
+
+      // India uses client_gstin, Dubai uses client_trn — accept either column.
+      const taxId = String(first.client_trn || first.client_gstin || '').trim();
+
+      let client = nextClients.find((c) => (c.name || '').toLowerCase() === String(first.client_name).toLowerCase());
+      if (!client) {
+        client = {
+          id: uid(),
+          name: first.client_name,
+          address: first.client_address || '',
+          gstin: taxId,
+          country: isDubai ? 'dubai' : 'india',
+          createdAt: new Date().toISOString()
+        };
+        nextClients.push(client);
+      }
+
+      const items = rowsForInvoice.map((r) => {
+        const baseDesc = r.description || (isDubai ? 'Leadrat CRM Software' : 'CRM Application');
+        const subType = r.sub_type || '';
+        return {
+          description: baseDesc,
+          subType,
+          fullDescription: subType ? baseDesc + ' ' + subType : baseDesc,
+          paymentDate: formatExcelDate(r.payment_date),
+          noOfLicense: String(r.no_of_license || ''),
+          validity: r.validity || '1 Year',
+          netAmount: parseFloat(r.net_amount) || 0,
+          totalAmount: parseFloat(r.total_amount) || 0
+        };
+      });
+      if (items.length > 1) mergedItems += items.length - 1;
+
+      const netSum = items.reduce((s, it) => s + (it.netAmount || 0), 0);
+      const totalSum = items.reduce((s, it) => s + (it.totalAmount || 0), 0);
+
+      // Dubai's single vat_amount collapses into the IGST slot.
+      let cgstSum = 0, sgstSum = 0, igstSum = 0;
+      if (isDubai) {
+        igstSum = rowsForInvoice.reduce((s, r) => s + (parseFloat(r.vat_amount) || 0), 0);
+        if (igstSum === 0 && totalSum > 0 && netSum > 0) igstSum = Math.round((totalSum - netSum) * 100) / 100;
+      } else {
+        cgstSum = rowsForInvoice.reduce((s, r) => s + (parseFloat(r.cgst) || 0), 0);
+        sgstSum = rowsForInvoice.reduce((s, r) => s + (parseFloat(r.sgst) || 0), 0);
+        igstSum = rowsForInvoice.reduce((s, r) => s + (parseFloat(r.igst) || 0), 0);
+      }
+
+      // Older templates had no amount_due column — fall back to the total.
+      const explicitAmtDue = parseFloat(first.amount_due);
+      const outstandingAmt = !isNaN(explicitAmtDue) && explicitAmtDue > 0
+        ? explicitAmtDue
+        : (status === 'due' ? totalSum : 0);
+
+      nextInvoices.push({
+        id: uid(),
+        docType,
+        branch,
+        invoiceNo,
+        invoiceDate: dt,
+        clientId: client.id,
+        clientName: first.client_name,
+        clientAddress: first.client_address || '',
+        clientGstin: taxId,
+        // Only set when the sheet says so — never default to the client name.
+        clientLegalName: String(first.legal_name || '').trim(),
+        gstApplicable: taxId ? 'yes' : 'no',
+        hsn: isDubai ? '' : (first.hsn_sac || '997331'),
+        items,
+        // Top-level mirror for back-compat (uses the first item)
+        description: items[0].description,
+        subType: items[0].subType,
+        fullDescription: items[0].fullDescription,
+        paymentDate: items[0].paymentDate,
+        noOfLicense: items[0].noOfLicense,
+        validity: items[0].validity,
+        gstType: isDubai ? 'igst' : (String(first.gst_type || '').toLowerCase().includes('igst') ? 'igst' : 'cgst_sgst'),
+        gstRate: isDubai ? 5 : 18,
+        netAmount: netSum,
+        cgst: cgstSum,
+        sgst: sgstSum,
+        igst: igstSum,
+        totalAmount: totalSum,
+        paymentMode: first.payment_mode || (isDubai ? 'BANK TRANSFER' : 'NEFT'),
+        status,
+        amountDueOutstanding: outstandingAmt,
+        dueDate: dueD,
+        tdsRate: 0,
+        tdsAmount: 0,
+        tdsStatus: isDubai ? 'not_applicable' : 'pending',
+        createdAt: new Date().toISOString()
+      });
+      added++;
+    }
+
+    await saveInvoices(nextInvoices);
+    await saveClients(nextClients);
+    setPendingImport(null);
+    const mergeMsg = mergedItems > 0 ? ' · ' + mergedItems + ' extra rows merged as line-items' : '';
+    showToast('Imported ' + added + ' invoice' + (added === 1 ? '' : 's') + mergeMsg +
+      (skipped ? ' (' + skipped + ' rows skipped for missing invoice_no/client)' : ''));
+    navigate('invoices');
+  }
+
+  /* ---------------- USERS ---------------- */
+  async function saveUserEdit(updated) {
+    await saveUsers(stateRef.current.users.map((u) => (u.email === updated.email ? updated : u)));
+    setUserModal({ open: false, email: null });
+    showToast('User updated successfully');
+  }
+
+  async function deleteUser(email) {
+    if (!confirm('Delete this user account? This cannot be undone.')) return;
+    await saveUsers(stateRef.current.users.filter((u) => u.email !== email));
+    showToast('User deleted · their Firebase sign-in must be removed from the Firebase console separately');
+  }
+
+  /* ---------------- TDS ---------------- */
+  async function saveTdsChanges(pending) {
+    const ids = Object.keys(pending);
+    if (ids.length === 0) return showToast('No changes to save', 'warn');
+    const next = stateRef.current.invoices.map((inv) => {
+      const ch = pending[inv.id];
+      if (!ch) return inv;
+      return { ...inv, ...ch, updatedAt: new Date().toISOString() };
+    });
+    await saveInvoices(next);
+    setTdsOpen(false);
+    showToast('Updated TDS records for ' + ids.length + ' invoice' + (ids.length > 1 ? 's' : ''));
+  }
+
+  /* ---------------- RENDER ---------------- */
+  const navVisible = (item) => {
+    if (item.perm === 'admin_only') return isAdmin;
+    if (isAdmin) return true;
+    if (item.perm === 'dashboard') return true;
+    const mod = perms[item.perm];
+    return !!(mod && mod.view);
+  };
+
+  const selectedUser = userModal.email ? users.find((u) => u.email === userModal.email) : null;
+  const detailsUser = userDetails.email ? users.find((u) => u.email === userDetails.email) : null;
+
+  return (
+    <div className="app show">
+      <div className="topbar">
+        <div className="topbar-left">
+          <div className="topbar-logo"><img src={LOGO_DATA_URI} alt="Leadrat" /></div>
+          <div className="topbar-nav">
+            {NAV.filter(navVisible).map((item) => (
+              <button
+                key={item.page}
+                className={'nav-btn' + (page === item.page ? ' active' : '')}
+                onClick={() => navigate(item.page)}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="topbar-right">
+          <span className="user-badge">
+            {currentUser.role === 'admin' ? 'Admin: ' + currentUser.name : currentUser.name}
+          </span>
+          <button className="btn btn-secondary btn-sm" onClick={doSignOut}>Sign Out</button>
+        </div>
+      </div>
+
+      <div className="main">
+        {page === 'dashboard' && (
+          <Dashboard
+            onOpenTds={() => setTdsOpen(true)}
+            onViewUser={(email) => setUserDetails({ open: true, email })}
+            onNavigate={navigate}
+            onDownloadBackup={onDownloadBackup}
+            onLoadBackup={onLoadBackup}
+          />
+        )}
+        {(page === 'invoices' || page === 'proforma') && (
+          <InvoiceListPage
+            key={page}
+            docType={page === 'invoices' ? 'invoice' : 'proforma'}
+            initialStatus={page === 'invoices' ? invoiceStatusFilter : ''}
+            onNew={openInvoiceForm}
+            onEdit={editInvoice}
+            onDelete={deleteInvoice}
+            onDownload={downloadInvoice}
+            onExport={exportToExcel}
+            onConvert={convertProformaToInvoice}
+          />
+        )}
+        {page === 'clients' && (
+          <ClientsPage
+            onAdd={openClientForm}
+            onEdit={editClient}
+            onDelete={deleteClient}
+            onDownloadTemplate={onDownloadClientTemplate}
+            onBulkFile={handleClientBulkFile}
+          />
+        )}
+        {page === 'import' && (
+          <BulkImportPage
+            pendingImport={pendingImport}
+            onFile={handleExcelUpload}
+            onConfirm={confirmImport}
+            onCancel={() => setPendingImport(null)}
+            onDownloadIndiaTemplate={() => {
+              downloadInvoiceTemplate();
+              showToast('India template downloaded. Rows sharing invoice_no merge as multi-item. Fill amount_due for status=due.');
+            }}
+            onDownloadDubaiTemplate={() => {
+              downloadDubaiTemplate();
+              showToast('Dubai template downloaded. AED currency, TRN, VAT @ 5%. Fill amount_due for status=due.');
+            }}
+          />
+        )}
+        {page === 'users' && (
+          <UsersPage
+            onView={(email) => setUserDetails({ open: true, email })}
+            onEdit={(email) => setUserModal({ open: true, email })}
+            onDelete={deleteUser}
+          />
+        )}
+        {page === 'settings' && <SettingsPage />}
+      </div>
+
+      <InvoiceModal
+        open={invoiceModal.open}
+        initialDocType={invoiceModal.docType}
+        editingDoc={invoiceModal.editing}
+        onClose={() => setInvoiceModal({ open: false, docType: 'invoice', editing: null })}
+        onSave={saveInvoiceDoc}
+      />
+
+      <ClientModal
+        open={clientModal.open}
+        editingClient={clientModal.editing}
+        onClose={() => setClientModal({ open: false, editing: null })}
+        onSave={saveClientRecord}
+      />
+
+      <ClientBulkModal
+        open={clientBulk.open}
+        rows={clientBulk.rows}
+        onClose={() => setClientBulk({ open: false, rows: [] })}
+        onConfirm={confirmClientBulkImport}
+      />
+
+      <UserModal
+        open={userModal.open && !!selectedUser}
+        user={selectedUser}
+        onClose={() => setUserModal({ open: false, email: null })}
+        onSave={saveUserEdit}
+      />
+
+      <UserDetailsModal
+        open={userDetails.open && !!detailsUser}
+        user={detailsUser}
+        onClose={() => setUserDetails({ open: false, email: null })}
+        onEdit={(email) => { setUserDetails({ open: false, email: null }); setUserModal({ open: true, email }); }}
+      />
+
+      <TdsModal
+        open={tdsOpen}
+        onClose={() => setTdsOpen(false)}
+        onSave={saveTdsChanges}
+        onEditInvoice={editInvoice}
+      />
+    </div>
+  );
+}
