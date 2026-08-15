@@ -153,6 +153,7 @@ export default function AuthScreen() {
         authProvider: 'password',
         role: 'user',
         status: 'active',
+        branchAccess: 'all',
         permissions: stateRef.current.deptPermissions[department]
           ? deepClone(stateRef.current.deptPermissions[department])
           : deepClone(MINIMAL_PERMISSIONS),
@@ -278,6 +279,7 @@ export default function AuthScreen() {
       authProvider: provider,
       role: 'user',
       status: 'active',
+      branchAccess: 'all',
       permissions: deepClone(MINIMAL_PERMISSIONS),
       createdAt: new Date().toISOString()
     };
@@ -458,7 +460,6 @@ export default function AuthScreen() {
               <div onKeyDown={onEnter(doAdminSignIn)}>
                 <PasswordInput value={adminPassInput} onChange={setAdminPassInput} placeholder="Enter admin password" autoComplete="current-password" />
               </div>
-              <div className="password-hint">Default: Beunited@12</div>
             </div>
             <button className="btn btn-primary btn-block" onClick={doAdminSignIn} disabled={busy}>
               {busy ? 'Signing in…' : 'Sign In as Admin'}

@@ -58,9 +58,28 @@ export function fmtMoneyAed(n) {
   return 'AED ' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-/** Word and PDF share one naming scheme so both files sort together. */
+/**
+ * The document number as it should read in a filename.
+ * Proformas keep their full PI number — "DSL/26-27/PI-313" → "PI-313" — while
+ * tax invoices keep the established last-3-digits form.
+ */
+export function fileDocNumber(d) {
+  const raw = String(d.invoiceNo || '').trim();
+  if (d.docType !== 'proforma') return last3(raw);
+  // Everything after the final "/" is the readable part of the series.
+  const tail = raw.split('/').pop().trim();
+  if (!tail) return 'PI-' + last3(raw);
+  // A prefix configured without series letters still reads as a PI number.
+  return /[A-Za-z]/.test(tail) ? tail : 'PI-' + tail;
+}
+
+/**
+ * Word and PDF share one naming scheme so both files sort together.
+ * Proforma: "PI-313-VIVICTA REAL ESTATE (NEW).docx"
+ * Invoice:  "011-VIVICTA REAL ESTATE (RENEWAL).docx"
+ */
 export function buildFilename(d, ext) {
-  const fnPrefix = last3(d.invoiceNo);
+  const fnPrefix = safeFile(fileDocNumber(d));
   const fnClient = safeFile((d.clientName || 'CLIENT').toUpperCase());
   const fnSub = safeFile((d.subType || d.description || '').toUpperCase());
   return fnPrefix + '-' + fnClient + (fnSub ? ' (' + fnSub + ')' : '') + '.' + (ext || 'docx');
