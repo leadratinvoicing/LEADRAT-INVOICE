@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../AppContext';
 import Modal from './Modal';
+import SearchableSelect from './SearchableSelect';
 import { KNOWN_SUBTYPES, PAYMENT_MODES, SUBTYPE_OPTIONS, VALIDITY_OPTIONS } from '../constants';
 import { dateToInput, nextDocNumber } from '../utils';
 
@@ -222,6 +223,12 @@ export default function InvoiceModal({ open, initialDocType, editingDoc, onClose
   const addItemRow = () => setItems((list) => [...list, blankItem()]);
   const removeItemRow = (idx) => setItems((list) => (list.length <= 1 ? list : list.filter((_, i) => i !== idx)));
 
+  // The picker sorts and filters these itself; it only needs value/label pairs.
+  const clientOptions = useMemo(
+    () => clients.map((c) => ({ value: c.id, label: c.name || '(unnamed client)' })),
+    [clients]
+  );
+
   function onClientSelect(id) {
     setClientId(id);
     if (!id) return;
@@ -407,10 +414,14 @@ export default function InvoiceModal({ open, initialDocType, editingDoc, onClose
       <div className="card-title">Bill To</div>
       <div className="form-group">
         <label className="form-label">Client <span className="req">*</span></label>
-        <select className="form-input" value={clientId} onChange={(e) => onClientSelect(e.target.value)}>
-          <option value="">-- Select existing or enter new --</option>
-          {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
+        <SearchableSelect
+          value={clientId}
+          onChange={onClientSelect}
+          options={clientOptions}
+          placeholder="-- Select existing or enter new --"
+          searchPlaceholder="Type to search clients..."
+          emptyText="No matching client — type the details below to add a new one."
+        />
       </div>
       <div className="form-grid">
         <div className="form-group form-grid-full">
