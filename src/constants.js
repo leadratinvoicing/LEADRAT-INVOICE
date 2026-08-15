@@ -55,10 +55,12 @@ export const PAYMENT_MODES = [
   { value: 'CASH', label: 'Cash' }
 ];
 
+// `label` carries the flag for filter dropdowns; `name` is the plain form used
+// inside the invoice form, where the Country field already states the region.
 export const BRANCHES = [
-  { value: 'pune', label: '🇮🇳 Pune', country: 'india' },
-  { value: 'bengaluru', label: '🇮🇳 Bengaluru', country: 'india' },
-  { value: 'dubai', label: '🇦🇪 Dubai', country: 'dubai' }
+  { value: 'pune', name: 'Pune', label: '🇮🇳 Pune', country: 'india' },
+  { value: 'bengaluru', name: 'Bengaluru', label: '🇮🇳 Bengaluru', country: 'india' },
+  { value: 'dubai', name: 'Dubai', label: '🇦🇪 Dubai', country: 'dubai' }
 ];
 
 /**

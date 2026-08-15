@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../AppContext';
 import Modal from './Modal';
 import SearchableSelect from './SearchableSelect';
-import { KNOWN_SUBTYPES, PAYMENT_MODES, SUBTYPE_OPTIONS, VALIDITY_OPTIONS } from '../constants';
+import { BRANCHES, KNOWN_SUBTYPES, PAYMENT_MODES, SUBTYPE_OPTIONS, VALIDITY_OPTIONS } from '../constants';
 import { dateToInput, nextDocNumber } from '../utils';
 
 function blankItem() {
@@ -73,6 +73,10 @@ export default function InvoiceModal({ open, initialDocType, editingDoc, onClose
   const isProforma = docType === 'proforma';
   const isEditing = !!editingDoc;
   const isDubai = branch === 'dubai';
+
+  // Only the branches belonging to the chosen country — India offers Pune and
+  // Bengaluru, Dubai offers Dubai alone.
+  const branchChoices = BRANCHES.filter((b) => b.country === country);
 
   // Dubai wording: TRN instead of GSTIN, VAT instead of GST, AED amounts.
   const taxIdLabel = isDubai ? 'TRN' : 'GSTIN';
@@ -393,9 +397,7 @@ export default function InvoiceModal({ open, initialDocType, editingDoc, onClose
         <div className="form-group">
           <label className="form-label">Branch <span className="req">*</span></label>
           <select className="form-input" value={branch} disabled={isDubai} onChange={(e) => setBranch(e.target.value)}>
-            <option value="pune">Pune</option>
-            <option value="bengaluru">Bengaluru</option>
-            <option value="dubai">Dubai</option>
+            {branchChoices.map((b) => <option key={b.value} value={b.value}>{b.name}</option>)}
           </select>
         </div>
         <div className="form-group">
