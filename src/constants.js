@@ -61,6 +61,26 @@ export const BRANCHES = [
   { value: 'dubai', label: '🇦🇪 Dubai', country: 'dubai' }
 ];
 
+/**
+ * A user's `branchAccess` — which branches they may view and edit. Data outside
+ * the selection is hidden from dashboards, invoice lists and the clients page.
+ * Admins always have full access regardless of this setting.
+ */
+export const BRANCH_ACCESS_OPTIONS = [
+  { value: 'all', label: '🌐 All Branches (Pune + Bengaluru + Dubai)', short: '🌐 All' },
+  { value: 'india', label: '🇮🇳 India Only (Pune + Bengaluru)', short: '🇮🇳 India' },
+  { value: 'pune', label: '🇮🇳 Pune Only', short: '🇮🇳 Pune' },
+  { value: 'bengaluru', label: '🇮🇳 Bengaluru Only', short: '🇮🇳 Bengaluru' },
+  { value: 'dubai', label: '🇦🇪 Dubai Only', short: '🇦🇪 Dubai' }
+];
+
+/** The three region tabs shared by the dashboard and the clients page filter. */
+export const REGION_TABS = [
+  { value: 'all', label: '🌐 All' },
+  { value: 'india', label: '🇮🇳 India' },
+  { value: 'dubai', label: '🇦🇪 Dubai' }
+];
+
 export const PERMISSION_MODULES = [
   { key: 'invoices', label: 'Tax Invoices', actions: ['view', 'create', 'edit', 'delete', 'export', 'generatePdf'] },
   { key: 'proforma', label: 'Proforma Invoices', actions: ['view', 'create', 'edit', 'delete', 'export', 'generatePdf'] },

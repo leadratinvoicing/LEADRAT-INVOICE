@@ -1,13 +1,11 @@
 import { useRef, useState } from 'react';
 import { useApp } from '../AppContext';
-import { branchLabel, fmtDate, fmtMoneyForRegion, parseDateValue, regionOf } from '../utils';
+import { REGION_TABS } from '../constants';
+import {
+  branchLabel, filterByUserBranch, filterClientsByUserBranch, fmtDate, fmtMoneyForRegion,
+  parseDateValue, regionOf, visibleRegionsForUser
+} from '../utils';
 import SortableTh, { sortRows, useSort } from './SortableTh';
-
-const REGION_TABS = [
-  { value: 'all', label: '🌐 All' },
-  { value: 'india', label: '🇮🇳 India' },
-  { value: 'dubai', label: '🇦🇪 Dubai' }
-];
 
 const RECENT_ACCESSORS = {
   invoiceNo: (d) => d.invoiceNo || '',
@@ -31,10 +29,16 @@ const RECENT_COLUMNS = [
 
 export default function Dashboard({ onOpenTds, onViewUser, onNavigate, onDownloadBackup, onLoadBackup }) {
   const { invoices, clients, users, currentUser } = useApp();
-  const [region, setRegion] = useState('all');
+  const [selectedRegion, setSelectedRegion] = useState('all');
   const backupFileRef = useRef(null);
   // No default column — the table opens in "most recently created first" order.
   const { sort, toggle, setDir } = useSort(null);
+
+  // Only show the region tabs this user's branchAccess allows, and fall back to
+  // the first visible one when the selected region is hidden from them.
+  const visibleRegions = visibleRegionsForUser(currentUser);
+  const regionTabs = REGION_TABS.filter((t) => visibleRegions.has(t.value));
+  const region = visibleRegions.has(selectedRegion) ? selectedRegion : regionTabs[0].value;
 
   // "india" = pune + bengaluru; "dubai" = dubai; "all" = everything.
   const belongsToRegion = (d) => {
@@ -43,7 +47,10 @@ export default function Dashboard({ onOpenTds, onViewUser, onNavigate, onDownloa
     return d.branch !== 'dubai';
   };
 
-  const all = invoices.filter(belongsToRegion);
+  // Apply the CURRENT USER'S branch access first, then the region filter.
+  // Admins see everything. Non-admins are limited to their allowed branches.
+  const userScoped = filterByUserBranch(invoices, currentUser);
+  const all = userScoped.filter(belongsToRegion);
   const inv = all.filter((d) => d.docType === 'invoice');
   const pro = all.filter((d) => d.docType === 'proforma');
   const totalRev = inv.filter((d) => d.status === 'paid').reduce((s, d) => s + (+d.totalAmount || 0), 0);
@@ -64,10 +71,15 @@ export default function Dashboard({ onOpenTds, onViewUser, onNavigate, onDownloa
   const isAdmin = currentUser && currentUser.role === 'admin';
   const money = (n) => fmtMoneyForRegion(n, region);
 
-  let clientCount = clients.length;
-  if (region !== 'all') {
-    const idsInRegion = new Set(all.map((d) => d.clientId).filter(Boolean));
-    clientCount = idsInRegion.size || (region === 'dubai' ? 0 : clients.length);
+  // Client count filtered strictly by region — the Dubai tab ONLY counts clients
+  // with at least one Dubai document, and never falls back to the India list.
+  let clientCount;
+  if (region === 'all') {
+    // "All" tab: count clients whose data is visible to this user
+    clientCount = filterClientsByUserBranch(clients, invoices, currentUser).length;
+  } else {
+    // Region-specific tab: unique clients appearing in the region-filtered docs
+    clientCount = new Set(all.map((d) => d.clientId).filter(Boolean)).size;
   }
 
   const taxLabel = region === 'dubai' ? 'Total VAT Collected' : 'Total GST Collected';
@@ -90,12 +102,16 @@ export default function Dashboard({ onOpenTds, onViewUser, onNavigate, onDownloa
     });
   }
   stats.push({ label: 'Outstanding Amount', value: money(totalDue), meta: 'Pending payments · click to view', cls: 'due', onClick: () => onNavigate('invoices', 'due') });
+  // Total Clients card — pass the current region so the Clients page auto-applies
+  // the matching filter (clicking "3" on the Dubai tab lands on a Clients page
+  // filtered to those 3 Dubai clients, not the full list).
+  const clientsRegionArg = (region === 'india' || region === 'dubai') ? region : '';
   stats.push({
     label: 'Total Clients',
     value: clientCount,
     meta: (region === 'all' ? 'In database' : 'In this region') + ' · click to view',
     cls: '',
-    onClick: () => onNavigate('clients')
+    onClick: () => onNavigate('clients', clientsRegionArg)
   });
 
   const showUsersPanel = isAdmin && region === 'all';
@@ -145,8 +161,8 @@ export default function Dashboard({ onOpenTds, onViewUser, onNavigate, onDownloa
 
       {/* Region filter — narrows stats and the recent table to one country */}
       <div className="tabs" style={{ marginBottom: 16 }}>
-        {REGION_TABS.map((t) => (
-          <button key={t.value} className={'tab' + (region === t.value ? ' active' : '')} onClick={() => setRegion(t.value)}>
+        {regionTabs.map((t) => (
+          <button key={t.value} className={'tab' + (region === t.value ? ' active' : '')} onClick={() => setSelectedRegion(t.value)}>
             {t.label}
           </button>
         ))}

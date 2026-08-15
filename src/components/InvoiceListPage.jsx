@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useState } from 'react';
 import { useApp } from '../AppContext';
 import { BRANCHES } from '../constants';
-import { branchLabel, fmtDate, fmtMoneyForRegion, parseDateValue, regionOf } from '../utils';
+import { branchLabel, filterByUserBranch, fmtDate, fmtMoneyForRegion, parseDateValue, regionOf } from '../utils';
 import SortableTh, { sortRows, useSort } from './SortableTh';
 
 const ACCESSORS = {
@@ -20,7 +20,7 @@ export default function InvoiceListPage({
   docType, initialStatus, onNew, onEdit, onDelete, onDownload, onDownloadPdf, onExport, onConvert,
   editingId, editor
 }) {
-  const { invoices } = useApp();
+  const { invoices, currentUser } = useApp();
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState(initialStatus || '');
   const [branch, setBranch] = useState('');
@@ -44,7 +44,8 @@ export default function InvoiceListPage({
   useEffect(() => { setStatus(initialStatus || ''); }, [initialStatus]);
 
   const s = search.toLowerCase();
-  let list = invoices.filter((d) => d.docType === docType);
+  // Start from the documents this user is allowed to see (based on branchAccess)
+  let list = filterByUserBranch(invoices, currentUser).filter((d) => d.docType === docType);
   if (s) {
     list = list.filter((d) =>
       (d.invoiceNo || '').toLowerCase().includes(s) ||

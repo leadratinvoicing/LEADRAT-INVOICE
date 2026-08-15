@@ -1,5 +1,5 @@
 import Modal from './Modal';
-import { ACTION_LABELS, PERMISSION_MODULES } from '../constants';
+import { ACTION_LABELS, BRANCH_ACCESS_OPTIONS, PERMISSION_MODULES } from '../constants';
 
 function DetailRow({ label, value }) {
   return (
@@ -19,6 +19,8 @@ export default function UserDetailsModal({ open, user, onClose, onEdit }) {
   const mobile = ((user.countryCode || '') + ' ' + (user.mobile || '')).trim() || '-';
   const perms = user.permissions || {};
   const fullName = user.name || ((user.firstName || '') + ' ' + (user.surname || '')).trim();
+  const branchAccess = user.branchAccess || 'all';
+  const branchAccessLabel = (BRANCH_ACCESS_OPTIONS.find((b) => b.value === branchAccess) || {}).label || branchAccess;
 
   const footer = (
     <>
@@ -53,6 +55,7 @@ export default function UserDetailsModal({ open, user, onClose, onEdit }) {
       <DetailRow label="Sign-in Method" value={user.authProvider === 'google' ? 'Google' : 'Email & password'} />
       <DetailRow label="Status" value={status} />
       <DetailRow label="Role" value={user.role === 'admin' ? 'Administrator' : 'User'} />
+      <DetailRow label="Branch Access" value={branchAccessLabel} />
       <DetailRow label="Joined" value={joined} />
       <DetailRow label="Last Updated" value={updated} />
 

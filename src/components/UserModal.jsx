@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useApp } from '../AppContext';
 import Modal from './Modal';
 import PermissionsGrid from './PermissionsGrid';
-import { DEPARTMENTS } from '../constants';
+import { BRANCH_ACCESS_OPTIONS, DEPARTMENTS } from '../constants';
 import { deepClone } from '../utils';
 import { friendlyAuthError, sendResetEmail } from '../auth';
 
@@ -14,6 +14,7 @@ export default function UserModal({ open, user, onClose, onSave }) {
   const [mobile, setMobile] = useState('');
   const [department, setDepartment] = useState('Sales');
   const [status, setStatus] = useState('active');
+  const [branchAccess, setBranchAccess] = useState('all');
   const [perms, setPerms] = useState({});
   const [saving, setSaving] = useState(false);
   const [sendingReset, setSendingReset] = useState(false);
@@ -25,6 +26,7 @@ export default function UserModal({ open, user, onClose, onSave }) {
     setMobile(user.mobile || '');
     setDepartment(user.department || 'Sales');
     setStatus(user.status || 'active');
+    setBranchAccess(user.branchAccess || 'all');
     setPerms(deepClone(user.permissions || getDefaultPermissionsForDept(user.department || 'Sales')));
   }, [open, user, getDefaultPermissionsForDept]);
 
@@ -64,6 +66,7 @@ export default function UserModal({ open, user, onClose, onSave }) {
         mobile: mobile.trim(),
         department,
         status,
+        branchAccess,
         permissions: perms,
         updatedAt: new Date().toISOString()
       });
@@ -118,6 +121,20 @@ export default function UserModal({ open, user, onClose, onSave }) {
           <option value="active">Active</option>
           <option value="suspended">Suspended</option>
         </select>
+      </div>
+
+      <hr className="section-divider" />
+      <div className="card-title">Branch Access</div>
+      <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 10 }}>
+        Which branches this user can view and edit invoices for. Data outside the selected branches is
+        hidden from them in dashboards, invoice lists, and reports.
+      </p>
+      <div className="form-group">
+        <label className="form-label">Allowed Branch(es)</label>
+        <select className="form-input" value={branchAccess} onChange={(e) => setBranchAccess(e.target.value)}>
+          {BRANCH_ACCESS_OPTIONS.map((b) => <option key={b.value} value={b.value}>{b.label}</option>)}
+        </select>
+        <div className="password-hint">Admins always have access to all branches regardless of this setting.</div>
       </div>
 
       <hr className="section-divider" />

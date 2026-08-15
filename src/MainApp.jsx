@@ -48,8 +48,9 @@ export default function MainApp() {
   } = useApp();
 
   const [page, setPage] = useState('dashboard');
-  // Set when a dashboard card deep-links into the invoice list with a filter.
+  // Set when a dashboard card deep-links into a list with a filter pre-applied.
   const [invoiceStatusFilter, setInvoiceStatusFilter] = useState('');
+  const [clientRegionFilter, setClientRegionFilter] = useState('');
 
   const [invoiceModal, setInvoiceModal] = useState({ open: false, docType: 'invoice', editing: null });
   const [clientModal, setClientModal] = useState({ open: false, editing: null });
@@ -63,13 +64,15 @@ export default function MainApp() {
   const perms = (currentUser && currentUser.permissions) || {};
 
   /* ---------------- NAVIGATION ---------------- */
-  const navigate = useCallback(async (next, statusFilter) => {
+  const navigate = useCallback(async (next, filter) => {
     if (!userCanAccess(next)) {
       showToast('You do not have permission to access this section', 'error');
       return;
     }
     setPage(next);
-    if (next === 'invoices') setInvoiceStatusFilter(statusFilter || '');
+    // `filter` means a status on the invoice list and a region on the clients page.
+    if (next === 'invoices') setInvoiceStatusFilter(filter || '');
+    else if (next === 'clients') setClientRegionFilter(filter || '');
     // Refresh shared data so this tab sees anything created in other sessions.
     try {
       if (next === 'users') await reloadUsers();
@@ -686,6 +689,7 @@ export default function MainApp() {
         )}
         {page === 'clients' && (
           <ClientsPage
+            initialRegion={clientRegionFilter}
             onAdd={openClientForm}
             onEdit={editClient}
             onDelete={deleteClient}

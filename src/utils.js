@@ -46,6 +46,76 @@ export function regionOf(branch) {
   return branch === 'dubai' ? 'dubai' : 'india';
 }
 
+/* ============================================================
+   BRANCH ACCESS
+   A user's `branchAccess` field can be one of:
+     'all'       → can see everything
+     'india'     → pune + bengaluru only (i.e. everything except dubai)
+     'pune'      → pune only
+     'bengaluru' → bengaluru only
+     'dubai'     → dubai only
+   Admins always have full access, ignoring branchAccess.
+   ============================================================ */
+
+/** The branches a user may see, or null when they are unrestricted. */
+export function allowedBranchesForUser(user) {
+  if (!user || user.role === 'admin') return null; // null = no restriction
+  const b = user.branchAccess || 'all';
+  if (b === 'all') return null;
+  if (b === 'india') return new Set(['pune', 'bengaluru']);
+  if (b === 'pune') return new Set(['pune']);
+  if (b === 'bengaluru') return new Set(['bengaluru']);
+  if (b === 'dubai') return new Set(['dubai']);
+  return null;
+}
+
+/** Filter a list of documents by the current user's branch access. */
+export function filterByUserBranch(list, user) {
+  const allowed = allowedBranchesForUser(user);
+  if (!allowed) return list;
+  return list.filter((d) => allowed.has(d.branch));
+}
+
+/**
+ * Filter clients by branch access — a client "belongs" to a branch if they have
+ * at least one invoice in that branch.
+ */
+export function filterClientsByUserBranch(clients, invoices, user) {
+  const allowed = allowedBranchesForUser(user);
+  if (!allowed) return clients;
+  const allowedClientIds = new Set(
+    invoices.filter((d) => allowed.has(d.branch)).map((d) => d.clientId).filter(Boolean)
+  );
+  return clients.filter((c) => allowedClientIds.has(c.id));
+}
+
+/**
+ * Which of the All / India / Dubai region tabs a user may see. A non-admin
+ * restricted to one region only sees that region's tab.
+ */
+export function visibleRegionsForUser(user) {
+  const isAdmin = user && user.role === 'admin';
+  const access = (user && user.branchAccess) || 'all';
+  if (isAdmin || access === 'all') return new Set(['all', 'india', 'dubai']);
+  if (access === 'india' || access === 'pune' || access === 'bengaluru') return new Set(['india']);
+  if (access === 'dubai') return new Set(['dubai']);
+  return new Set(['all', 'india', 'dubai']);
+}
+
+/**
+ * clientId → Set of 'india' / 'dubai', derived from the branches of their
+ * invoices. A client can be in India, Dubai, both, or neither (no invoices yet).
+ */
+export function clientRegionMap(invoices) {
+  const map = new Map();
+  for (const inv of invoices) {
+    if (!inv.clientId) continue;
+    if (!map.has(inv.clientId)) map.set(inv.clientId, new Set());
+    map.get(inv.clientId).add(inv.branch === 'dubai' ? 'dubai' : 'india');
+  }
+  return map;
+}
+
 export function branchLabel(branch) {
   if (branch === 'dubai') return '\uD83C\uDDE6\uD83C\uDDEA Dubai';
   if (branch === 'bengaluru') return '\uD83C\uDDEE\uD83C\uDDF3 Bengaluru';

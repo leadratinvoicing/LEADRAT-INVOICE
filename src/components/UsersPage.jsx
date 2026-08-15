@@ -1,8 +1,14 @@
 import { useState } from 'react';
 import { useApp } from '../AppContext';
-import { DEFAULT_DEPT_PERMISSIONS, DEPARTMENTS } from '../constants';
+import { BRANCH_ACCESS_OPTIONS, DEFAULT_DEPT_PERMISSIONS, DEPARTMENTS } from '../constants';
 import { deepClone } from '../utils';
 import PermissionsGrid from './PermissionsGrid';
+
+/** 'all' → '🌐 All', 'dubai' → '🇦🇪 Dubai', … for the compact table column. */
+function branchAccessShort(value) {
+  const opt = BRANCH_ACCESS_OPTIONS.find((b) => b.value === (value || 'all'));
+  return opt ? opt.short : BRANCH_ACCESS_OPTIONS[0].short;
+}
 
 export default function UsersPage({ onView, onEdit, onDelete }) {
   const { users, deptPermissions, saveDeptPermissions, reloadUsers, showToast } = useApp();
@@ -102,13 +108,13 @@ export default function UsersPage({ onView, onEdit, onDelete }) {
         <table>
           <thead>
             <tr>
-              <th>Name</th><th>Email</th><th>Mobile</th><th>Department</th><th>Status</th><th>Joined</th>
+              <th>Name</th><th>Email</th><th>Mobile</th><th>Department</th><th>Branch</th><th>Status</th><th>Joined</th>
               <th style={{ textAlign: 'right' }}>Actions</th>
             </tr>
           </thead>
           <tbody>
             {list.length === 0 ? (
-              <tr><td colSpan={7}>
+              <tr><td colSpan={8}>
                 <div className="empty-state">
                   <div className="empty-state-icon">👥</div>
                   <div className="empty-state-title">No users found</div>
@@ -129,6 +135,7 @@ export default function UsersPage({ onView, onEdit, onDelete }) {
                   <td style={{ fontSize: 12 }}>{u.email || ''}</td>
                   <td style={{ fontSize: 12 }}>{mobile || '-'}</td>
                   <td><span className="badge badge-invoice">{u.department || '-'}</span></td>
+                  <td style={{ fontSize: 12 }}>{branchAccessShort(u.branchAccess)}</td>
                   <td><span className={'badge ' + (status === 'active' ? 'badge-paid' : 'badge-due')}>{status}</span></td>
                   <td style={{ fontSize: 12 }}>{joined}</td>
                   <td>
