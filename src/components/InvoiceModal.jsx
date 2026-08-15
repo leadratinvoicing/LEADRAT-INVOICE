@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../AppContext';
 import Modal from './Modal';
 import { KNOWN_SUBTYPES, PAYMENT_MODES, SUBTYPE_OPTIONS, VALIDITY_OPTIONS } from '../constants';
-import { dateToInput, nextAvailableNumber, pad } from '../utils';
+import { dateToInput, nextDocNumber } from '../utils';
 
 function blankItem() {
   const today = new Date().toISOString().slice(0, 10);
@@ -36,8 +36,9 @@ function distinctLegalName(legal, client) {
   return l && l.toLowerCase() !== c.toLowerCase() ? l : '';
 }
 
-export default function InvoiceModal({ open, initialDocType, editingDoc, onClose, onSave }) {
+export default function InvoiceModal({ open, initialDocType, editingDoc, onClose, onSave, inline }) {
   const { clients, showToast, stateRef } = useApp();
+  const panelRef = useRef(null);
 
   const [docType, setDocType] = useState('invoice');
   const [country, setCountry] = useState('india');
@@ -156,14 +157,16 @@ export default function InvoiceModal({ open, initialDocType, editingDoc, onClose
   /* ---------- Invoice number autofill (new documents only) ---------- */
   useEffect(() => {
     if (!open || isEditing) return;
-    const n = stateRef.current.numbering;
-    let prefix, fallback;
-    if (docType === 'proforma') { prefix = n.proPrefix; fallback = n.nextPro; }
-    else if (branch === 'dubai') { prefix = n.invPrefixDbx || 'DSL/26-27/DB-'; fallback = n.nextInvDbx || 41; }
-    else if (branch === 'pune') { prefix = n.invPrefixPune; fallback = n.nextInvPune; }
-    else { prefix = n.invPrefixBlu; fallback = n.nextInvBlu; }
-    setInvoiceNo(prefix + pad(nextAvailableNumber(stateRef.current.invoices, prefix, fallback), 3));
+    // Prefix, padding and suffix all come from Settings → Numbering & Format.
+    setInvoiceNo(nextDocNumber(stateRef.current.numbering, stateRef.current.invoices, docType, branch));
   }, [open, isEditing, docType, branch, stateRef]);
+
+  // Keep the in-place editor on screen when it expands under a row near the fold.
+  useEffect(() => {
+    if (open && inline && panelRef.current) {
+      panelRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }, [open, inline, editingDoc]);
 
   useEffect(() => { if (isProforma) setStatus('due'); }, [isProforma]);
 
@@ -337,13 +340,14 @@ export default function InvoiceModal({ open, initialDocType, editingDoc, onClose
     };
   }
 
-  async function submit(preview) {
+  /** `downloadAs` is 'word', 'pdf' or null — the format to hand back after saving. */
+  async function submit(downloadAs) {
     if (saving) return;
     const doc = buildDocFromForm();
     if (!doc) return;
     setSaving(true);
     try {
-      await onSave(doc, preview, (field) => setBadField(field));
+      await onSave(doc, downloadAs, (field) => setBadField(field));
     } finally {
       setSaving(false);
     }
@@ -352,15 +356,18 @@ export default function InvoiceModal({ open, initialDocType, editingDoc, onClose
   const footer = (
     <>
       <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
-      <button className="btn btn-success" onClick={() => submit(true)} disabled={saving}>Save &amp; Preview</button>
-      <button className="btn btn-primary" onClick={() => submit(false)} disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+      <button className="btn btn-success" onClick={() => submit('word')} disabled={saving}>Save &amp; Word</button>
+      <button className="btn btn-success" onClick={() => submit('pdf')} disabled={saving}>Save &amp; PDF</button>
+      <button className="btn btn-primary" onClick={() => submit(null)} disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
     </>
   );
 
-  const title = isEditing ? 'Edit Document' : (initialDocType === 'invoice' ? 'New Tax Invoice' : 'New Proforma Invoice');
+  const title = isEditing
+    ? 'Edit ' + (isProforma ? 'Proforma' : 'Tax Invoice') + (editingDoc.invoiceNo ? ' · ' + editingDoc.invoiceNo : '')
+    : (initialDocType === 'invoice' ? 'New Tax Invoice' : 'New Proforma Invoice');
 
-  return (
-    <Modal open={open} title={title} onClose={onClose} footer={footer}>
+  const body = (
+    <>
       <div className="form-grid">
         <div className="form-group">
           <label className="form-label">Document Type *</label>
@@ -669,6 +676,27 @@ export default function InvoiceModal({ open, initialDocType, editingDoc, onClose
           </div>
         </div>
       )}
-    </Modal>
+    </>
+  );
+
+  if (!open) return null;
+
+  // Editing from a list opens the form in place, directly under the row that was
+  // clicked, instead of floating a dialog over the page.
+  if (inline) {
+    return (
+      <div className="inline-editor" ref={panelRef}>
+        <div className="inline-editor-head">
+          <div className="modal-title">{title}</div>
+          <button className="modal-close" onClick={onClose} title="Close editor">&times;</button>
+        </div>
+        <div className="inline-editor-body">{body}</div>
+        <div className="inline-editor-foot">{footer}</div>
+      </div>
+    );
+  }
+
+  return (
+    <Modal open={open} title={title} onClose={onClose} footer={footer}>{body}</Modal>
   );
 }

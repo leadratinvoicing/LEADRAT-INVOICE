@@ -156,7 +156,7 @@ export async function generateDubaiDocx(d, isProforma, co, bank) {
       cell({ width: itemsCols[0], children: [aligned([R(it.fullDescription || (it.description + (it.subType ? ' ' + it.subType : '')), { size: 16 })])] }),
       cell({ width: itemsCols[1], children: [aligned([R(it.noOfLicense || '', { size: 16 })])] }),
       cell({ width: itemsCols[2], children: [aligned([R(it.validity || '', { size: 16 })])] }),
-      cell({ width: itemsCols[3], children: [aligned([R(money(it.netAmount), { size: 16, raw: true })], AlignmentType.RIGHT)] })
+      cell({ width: itemsCols[3], children: [aligned([R(money(it.netAmount), { size: 16, raw: true })])] })
     ]
   }));
 
@@ -190,13 +190,13 @@ export async function generateDubaiDocx(d, isProforma, co, bank) {
         children: [
           cell({ width: LEFT_W, rowSpan: 2, vAlign: VerticalAlign.TOP, children: bankChildren }),
           cell({ width: MID_W, children: [aligned([R('VAT @ 5%', { bold: true, upper: true })])] }),
-          cell({ width: RIGHT_W, children: [aligned([R(money(vatAmt), { bold: true, raw: true })], AlignmentType.RIGHT)] })
+          cell({ width: RIGHT_W, children: [aligned([R(money(vatAmt), { bold: true, raw: true })])] })
         ]
       }),
       new TableRow({
         children: [
           cell({ width: MID_W, children: [aligned([R('Total Amount', { bold: true })])] }),
-          cell({ width: RIGHT_W, children: [aligned([R(money(grandTotal), { bold: true, raw: true })], AlignmentType.RIGHT)] })
+          cell({ width: RIGHT_W, children: [aligned([R(money(grandTotal), { bold: true, raw: true })])] })
         ]
       }),
       fullRow([RP([R('Payment Mode: ', { bold: true }), R(d.paymentMode || 'Bank Transfer', { raw: true })])]),

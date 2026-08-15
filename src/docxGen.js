@@ -265,7 +265,8 @@ export async function generateDocx(d, company) {
       Math.round(TOTAL_WIDTH * 0.13)
     ];
     cols.push(TOTAL_WIDTH - cols.reduce((s, x) => s + x, 0));
-    const rightIdx = new Set([4, 5, 6]);
+    // Every column in this table is centred, headers and values alike.
+    const rawIdx = new Set([1, 4, 5, 6]);
     const headLabels = ['Description', 'Payment Due Date', 'No of License', 'Billing Type', 'Net Amount', 'GST/ IGST', 'Total Due'];
     const headRow = new TableRow({
       tableHeader: true,
@@ -291,9 +292,9 @@ export async function generateDocx(d, company) {
           width: cols[i],
           vAlign: VerticalAlign.CENTER,
           children: [new Paragraph({
-            alignment: rightIdx.has(i) ? AlignmentType.RIGHT : AlignmentType.CENTER,
+            alignment: AlignmentType.CENTER,
             spacing: { before: 0, after: 0 },
-            children: [R(v, { size: 16, raw: rightIdx.has(i) || i === 1 })]
+            children: [R(v, { size: 16, raw: rawIdx.has(i) })]
           })]
         }))
       });
@@ -308,9 +309,9 @@ export async function generateDocx(d, company) {
           vAlign: VerticalAlign.CENTER,
           children: [new Paragraph({ alignment: AlignmentType.RIGHT, spacing: { before: 0, after: 0 }, children: [R('Total Due:', { bold: true, size: 16 })] })]
         }),
-        cell({ width: cols[4], vAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.RIGHT, spacing: { before: 0, after: 0 }, children: [R(money(d.netAmount), { bold: true, size: 16, raw: true })] })] }),
-        cell({ width: cols[5], vAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.RIGHT, spacing: { before: 0, after: 0 }, children: [R(money(totalGstSum), { bold: true, size: 16, raw: true })] })] }),
-        cell({ width: cols[6], vAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.RIGHT, spacing: { before: 0, after: 0 }, children: [R(money(d.totalAmount), { bold: true, size: 16, raw: true })] })] })
+        cell({ width: cols[4], vAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 0, after: 0 }, children: [R(money(d.netAmount), { bold: true, size: 16, raw: true })] })] }),
+        cell({ width: cols[5], vAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 0, after: 0 }, children: [R(money(totalGstSum), { bold: true, size: 16, raw: true })] })] }),
+        cell({ width: cols[6], vAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 0, after: 0 }, children: [R(money(d.totalAmount), { bold: true, size: 16, raw: true })] })] })
       ];
       summaryRows.push(new TableRow({ children: summaryCells }));
     }
@@ -331,8 +332,7 @@ export async function generateDocx(d, company) {
       Math.round(TOTAL_WIDTH * 0.11)
     ];
     cols.push(TOTAL_WIDTH - cols.reduce((s, x) => s + x, 0));
-    const rightIdx = new Set([4, 5, 6, 7, 8]);
-    // All headers bold + uppercase + centred, matching the proforma layout.
+    // All headers and values bold/centred, matching the proforma layout.
     const headLabels = ['Description', 'Payment Date', 'No of License', 'Validity', 'Net Amount', 'CGST', 'SGST', 'IGST', 'TOTAL AMOUNT'];
     const headRow = new TableRow({
       tableHeader: true,
@@ -359,7 +359,7 @@ export async function generateDocx(d, company) {
           width: cols[i],
           vAlign: VerticalAlign.CENTER,
           children: [new Paragraph({
-            alignment: rightIdx.has(i) ? AlignmentType.RIGHT : AlignmentType.CENTER,
+            alignment: AlignmentType.CENTER,
             spacing: { before: 0, after: 0 },
             children: [R(cv.v, { size: 14, raw: !!cv.raw })]
           })]
@@ -376,11 +376,11 @@ export async function generateDocx(d, company) {
           vAlign: VerticalAlign.CENTER,
           children: [new Paragraph({ alignment: AlignmentType.RIGHT, spacing: { before: 0, after: 0 }, children: [R(summaryLabel + ':', { bold: true, size: 14 })] })]
         }),
-        cell({ width: cols[4], vAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.RIGHT, spacing: { before: 0, after: 0 }, children: [R(money(d.netAmount), { bold: true, size: 14, raw: true })] })] }),
-        cell({ width: cols[5], vAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.RIGHT, spacing: { before: 0, after: 0 }, children: [R(money(d.cgst), { bold: true, size: 14, raw: true })] })] }),
-        cell({ width: cols[6], vAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.RIGHT, spacing: { before: 0, after: 0 }, children: [R(money(d.sgst), { bold: true, size: 14, raw: true })] })] }),
-        cell({ width: cols[7], vAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.RIGHT, spacing: { before: 0, after: 0 }, children: [R(money(d.igst), { bold: true, size: 14, raw: true })] })] }),
-        cell({ width: cols[8], vAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.RIGHT, spacing: { before: 0, after: 0 }, children: [R(money(d.totalAmount), { bold: true, size: 14, raw: true })] })] })
+        cell({ width: cols[4], vAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 0, after: 0 }, children: [R(money(d.netAmount), { bold: true, size: 14, raw: true })] })] }),
+        cell({ width: cols[5], vAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 0, after: 0 }, children: [R(money(d.cgst), { bold: true, size: 14, raw: true })] })] }),
+        cell({ width: cols[6], vAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 0, after: 0 }, children: [R(money(d.sgst), { bold: true, size: 14, raw: true })] })] }),
+        cell({ width: cols[7], vAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 0, after: 0 }, children: [R(money(d.igst), { bold: true, size: 14, raw: true })] })] }),
+        cell({ width: cols[8], vAlign: VerticalAlign.CENTER, children: [new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 0, after: 0 }, children: [R(money(d.totalAmount), { bold: true, size: 14, raw: true })] })] })
       ];
       summaryRows.push(new TableRow({ children: summaryCells }));
     }

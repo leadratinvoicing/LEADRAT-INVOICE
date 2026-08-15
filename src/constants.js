@@ -179,7 +179,40 @@ export const DEFAULT_NUMBERING = {
   nextInvPune: 11,
   nextInvBlu: 7,
   nextInvDbx: 41, // starts after DB-040 per reference
-  nextPro: 88
+  nextPro: 88,
+  // Format controls — a document number is prefix + zero-padded counter + suffix.
+  invPadPune: 3,
+  invPadBlu: 3,
+  invPadDbx: 3,
+  proPad: 3,
+  invSuffixPune: '',
+  invSuffixBlu: '',
+  invSuffixDbx: '',
+  proSuffix: ''
 };
+
+/**
+ * The four independent document series. Each one owns its own prefix, counter
+ * and format, and the Settings → Numbering & Format tab is generated from this
+ * list, so adding a series here is all it takes to expose it.
+ */
+export const NUMBER_SERIES = [
+  {
+    key: 'pune', label: 'Pune Tax Invoice', docType: 'invoice', branch: 'pune',
+    prefixKey: 'invPrefixPune', nextKey: 'nextInvPune', padKey: 'invPadPune', suffixKey: 'invSuffixPune'
+  },
+  {
+    key: 'bengaluru', label: 'Bengaluru Tax Invoice', docType: 'invoice', branch: 'bengaluru',
+    prefixKey: 'invPrefixBlu', nextKey: 'nextInvBlu', padKey: 'invPadBlu', suffixKey: 'invSuffixBlu'
+  },
+  {
+    key: 'dubai', label: 'Dubai Tax Invoice', docType: 'invoice', branch: 'dubai',
+    prefixKey: 'invPrefixDbx', nextKey: 'nextInvDbx', padKey: 'invPadDbx', suffixKey: 'invSuffixDbx'
+  },
+  {
+    key: 'proforma', label: 'Proforma Invoice (all branches)', docType: 'proforma', branch: null,
+    prefixKey: 'proPrefix', nextKey: 'nextPro', padKey: 'proPad', suffixKey: 'proSuffix'
+  }
+];
 
 export const DEFAULT_ADMIN_PASS = 'Beunited@12';

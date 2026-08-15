@@ -1,17 +1,44 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { useApp } from '../AppContext';
 import { BRANCHES } from '../constants';
-import { branchLabel, fmtDate, fmtMoneyForRegion, regionOf } from '../utils';
+import { branchLabel, fmtDate, fmtMoneyForRegion, parseDateValue, regionOf } from '../utils';
+import SortableTh, { sortRows, useSort } from './SortableTh';
+
+const ACCESSORS = {
+  invoiceNo: (d) => d.invoiceNo || '',
+  clientName: (d) => d.clientName || '',
+  clientGstin: (d) => d.clientGstin || '',
+  branch: (d) => branchLabel(d.branch),
+  invoiceDate: (d) => parseDateValue(d.invoiceDate),
+  description: (d) => (d.description || '') + (d.subType ? ' ' + d.subType : ''),
+  totalAmount: (d) => +d.totalAmount || 0,
+  status: (d) => (d.status === 'paid' ? 'Cleared' : 'Due'),
+  dueDate: (d) => parseDateValue(d.dueDate || d.invoiceDate)
+};
 
 export default function InvoiceListPage({
-  docType, initialStatus, onNew, onEdit, onDelete, onDownload, onExport, onConvert
+  docType, initialStatus, onNew, onEdit, onDelete, onDownload, onDownloadPdf, onExport, onConvert,
+  editingId, editor
 }) {
   const { invoices } = useApp();
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState(initialStatus || '');
   const [branch, setBranch] = useState('');
+  // Newest first by default, matching how the list behaved before sorting existed.
+  const { sort, toggle, setDir } = useSort('invoiceDate', 'desc');
 
   const isInvoice = docType === 'invoice';
+
+  const columns = [
+    { key: 'invoiceNo', label: 'Invoice No' },
+    { key: 'clientName', label: 'Client' },
+    { key: 'clientGstin', label: 'GSTIN / TRN' },
+    { key: 'branch', label: 'Branch' },
+    { key: 'invoiceDate', label: 'Date' },
+    { key: 'description', label: 'Description' },
+    { key: 'totalAmount', label: isInvoice ? 'Total' : 'Total Due' },
+    isInvoice ? { key: 'status', label: 'Status' } : { key: 'dueDate', label: 'Due Date' }
+  ];
 
   // Dashboard cards deep-link here with a status pre-selected.
   useEffect(() => { setStatus(initialStatus || ''); }, [initialStatus]);
@@ -27,7 +54,7 @@ export default function InvoiceListPage({
   }
   if (isInvoice && status) list = list.filter((d) => d.status === status);
   if (isInvoice && branch) list = list.filter((d) => d.branch === branch);
-  list = [...list].sort((a, b) => new Date(b.invoiceDate || 0) - new Date(a.invoiceDate || 0));
+  list = sortRows(list, sort, ACCESSORS);
 
   return (
     <div className="page show">
@@ -67,20 +94,15 @@ export default function InvoiceListPage({
         <table>
           <thead>
             <tr>
-              <th>Invoice No</th>
-              <th>Client</th>
-              <th>GSTIN / TRN</th>
-              <th>Branch</th>
-              <th>Date</th>
-              <th>Description</th>
-              <th>{isInvoice ? 'Total' : 'Total Due'}</th>
-              <th>{isInvoice ? 'Status' : 'Due Date'}</th>
+              {columns.map((c) => (
+                <SortableTh key={c.key} label={c.label} sortKey={c.key} sort={sort} onSort={toggle} onSetDir={setDir} />
+              ))}
               <th style={{ textAlign: 'right' }}>Actions</th>
             </tr>
           </thead>
           <tbody>
             {list.length === 0 ? (
-              <tr><td colSpan={9}>
+              <tr><td colSpan={columns.length + 1}>
                 <div className="empty-state">
                   <div className="empty-state-icon">📋</div>
                   <div className="empty-state-title">No {isInvoice ? 'invoices' : 'proformas'} found</div>
@@ -91,8 +113,10 @@ export default function InvoiceListPage({
               const convertedTo = d.convertedToInvoiceId
                 ? invoices.find((x) => x.id === d.convertedToInvoiceId)
                 : null;
+              const isEditingRow = editingId === d.id && !!editor;
               return (
-                <tr key={d.id}>
+                <Fragment key={d.id}>
+                <tr className={isEditingRow ? 'row-editing' : undefined}>
                   <td><strong>{d.invoiceNo}</strong></td>
                   <td>{d.clientName || ''}</td>
                   <td style={{ fontSize: 11, color: 'var(--muted)' }}>{d.clientGstin || '-'}</td>
@@ -126,11 +150,18 @@ export default function InvoiceListPage({
                         )
                       )}
                       <button className="icon-btn pdf" onClick={() => onDownload(d.id)} title="Download Word document">📥 Word</button>
-                      <button className="icon-btn edit" onClick={() => onEdit(d.id)} title="Edit">✏️</button>
+                      <button className="icon-btn pdf" onClick={() => onDownloadPdf(d.id)} title="Download PDF document">📄 PDF</button>
+                      <button className="icon-btn edit" onClick={() => onEdit(d.id)} title={isEditingRow ? 'Close editor' : 'Edit'}>✏️</button>
                       <button className="icon-btn delete" onClick={() => onDelete(d.id)} title="Delete">🗑</button>
                     </div>
                   </td>
                 </tr>
+                {isEditingRow && (
+                  <tr className="editor-row">
+                    <td colSpan={columns.length + 1}>{editor}</td>
+                  </tr>
+                )}
+                </Fragment>
               );
             })}
           </tbody>

@@ -47,7 +47,8 @@ export default function ClientBulkModal({ open, rows, onClose, onConfirm }) {
           <thead>
             <tr>
               <th style={{ width: 32 }}>#</th>
-              <th>Client Name</th><th>Legal Name</th><th>Address</th><th>City</th><th>GSTIN</th><th>Status</th>
+              <th>Client Name</th><th>Legal Name</th><th>Address</th><th>City</th>
+              <th>Email</th><th>Contact No</th><th>GSTIN</th><th>Status</th>
             </tr>
           </thead>
           <tbody>
@@ -58,6 +59,8 @@ export default function ClientBulkModal({ open, rows, onClose, onConfirm }) {
                 <td>{r.legalName}</td>
                 <td style={{ fontSize: 12 }}>{r.address}</td>
                 <td>{r.city}</td>
+                <td style={{ fontSize: 12 }}>{r.email}</td>
+                <td style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{r.phone}</td>
                 <td style={{ fontFamily: 'monospace', fontSize: 12 }}>{r.gstin}</td>
                 <td>
                   {r.valid

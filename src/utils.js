@@ -2,6 +2,8 @@
    UTILS — ported verbatim from the original HTML build
    ============================================================ */
 
+import { DEFAULT_NUMBERING, NUMBER_SERIES } from './constants';
+
 export function uid() {
   return 'id_' + Date.now() + '_' + Math.floor(Math.random() * 10000);
 }
@@ -65,6 +67,22 @@ export function fmtDate(s) {
   }
   if (isNaN(d.getTime())) return s;
   return pad(d.getDate(), 2) + '/' + pad(d.getMonth() + 1, 2) + '/' + d.getFullYear();
+}
+
+/** Comparable timestamp for table sorting — null when unparseable. */
+export function parseDateValue(s) {
+  if (!s) return null;
+  let d;
+  if (typeof s === 'string' && s.includes('-') && s.length === 10) {
+    const p = s.split('-');
+    d = new Date(p[0], p[1] - 1, p[2]);
+  } else if (typeof s === 'string' && s.includes('/')) {
+    const p = s.split('/');
+    d = new Date(p[2], p[1] - 1, p[0]);
+  } else {
+    d = new Date(s);
+  }
+  return isNaN(d.getTime()) ? null : d.getTime();
 }
 
 export function dateToInput(s) {
@@ -164,6 +182,45 @@ export function nextAvailableNumber(invoices, prefix, fallbackCounter) {
     }
   }
   return highest + 1;
+}
+
+/** Which of the four series a document belongs to (see NUMBER_SERIES). */
+export function seriesKeyFor(docType, branch) {
+  if (docType === 'proforma') return 'proforma';
+  if (branch === 'dubai') return 'dubai';
+  if (branch === 'bengaluru') return 'bengaluru';
+  return 'pune';
+}
+
+/** The series definition plus its currently configured prefix/pad/suffix/counter. */
+export function seriesConfig(numbering, seriesKey) {
+  const n = numbering || {};
+  const def = NUMBER_SERIES.find((s) => s.key === seriesKey) || NUMBER_SERIES[0];
+  const fallback = DEFAULT_NUMBERING;
+  const padRaw = parseInt(n[def.padKey], 10);
+  return {
+    def,
+    prefix: n[def.prefixKey] || fallback[def.prefixKey],
+    pad: isNaN(padRaw) ? (fallback[def.padKey] || 3) : Math.min(Math.max(padRaw, 1), 10),
+    suffix: n[def.suffixKey] || '',
+    next: parseInt(n[def.nextKey], 10) || fallback[def.nextKey] || 1
+  };
+}
+
+/** Render one document number for a series: prefix + padded counter + suffix. */
+export function formatDocNumber(numbering, seriesKey, seq) {
+  const c = seriesConfig(numbering, seriesKey);
+  return c.prefix + pad(seq, c.pad) + c.suffix;
+}
+
+/**
+ * The next free number for a series — highest matching number already stored,
+ * plus one, never below the stored counter.
+ */
+export function nextDocNumber(numbering, invoices, docType, branch) {
+  const key = seriesKeyFor(docType, branch);
+  const c = seriesConfig(numbering, key);
+  return formatDocNumber(numbering, key, nextAvailableNumber(invoices, c.prefix, c.next));
 }
 
 export function formatExcelDate(v) {

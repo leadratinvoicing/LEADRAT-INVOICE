@@ -1,10 +1,41 @@
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useApp } from '../AppContext';
+import SortableTh, { sortRows, useSort } from './SortableTh';
+
+const COLUMNS = [
+  { key: 'name', label: 'Client Name' },
+  { key: 'gstin', label: 'GSTIN' },
+  { key: 'city', label: 'City' },
+  { key: 'email', label: 'Email' },
+  { key: 'phone', label: 'Contact No' },
+  { key: 'address', label: 'Address' },
+  { key: 'invoiceCount', label: 'Invoices' }
+];
 
 export default function ClientsPage({ onAdd, onEdit, onDelete, onDownloadTemplate, onBulkFile }) {
   const { clients, invoices } = useApp();
   const [search, setSearch] = useState('');
+  const { sort, toggle, setDir } = useSort('name', 'asc');
   const fileRef = useRef(null);
+
+  // Invoice counts once per render instead of a scan per row.
+  const invoiceCounts = useMemo(() => {
+    const m = new Map();
+    for (const d of invoices) {
+      if (d.clientId) m.set(d.clientId, (m.get(d.clientId) || 0) + 1);
+    }
+    return m;
+  }, [invoices]);
+
+  const accessors = {
+    name: (c) => c.name || '',
+    gstin: (c) => c.gstin || '',
+    city: (c) => c.city || '',
+    email: (c) => c.email || '',
+    phone: (c) => c.phone || '',
+    address: (c) => c.address || '',
+    invoiceCount: (c) => invoiceCounts.get(c.id) || 0
+  };
 
   const s = search.toLowerCase();
   let list = clients;
@@ -12,9 +43,12 @@ export default function ClientsPage({ onAdd, onEdit, onDelete, onDownloadTemplat
     list = list.filter((c) =>
       (c.name || '').toLowerCase().includes(s) ||
       (c.gstin || '').toLowerCase().includes(s) ||
-      (c.city || '').toLowerCase().includes(s)
+      (c.city || '').toLowerCase().includes(s) ||
+      (c.email || '').toLowerCase().includes(s) ||
+      (c.phone || '').toLowerCase().includes(s)
     );
   }
+  list = sortRows(list, sort, accessors);
 
   return (
     <div className="page show">
@@ -39,7 +73,7 @@ export default function ClientsPage({ onAdd, onEdit, onDelete, onDownloadTemplat
       </div>
 
       <div className="filter-bar">
-        <input type="text" className="form-input search-input" placeholder="Search clients by name, GSTIN, or city..."
+        <input type="text" className="form-input search-input" placeholder="Search clients by name, GSTIN, city, email, or contact no..."
           value={search} onChange={(e) => setSearch(e.target.value)} />
       </div>
 
@@ -47,13 +81,15 @@ export default function ClientsPage({ onAdd, onEdit, onDelete, onDownloadTemplat
         <table>
           <thead>
             <tr>
-              <th>Client Name</th><th>GSTIN</th><th>City</th><th>Address</th><th>Invoices</th>
+              {COLUMNS.map((c) => (
+                <SortableTh key={c.key} label={c.label} sortKey={c.key} sort={sort} onSort={toggle} onSetDir={setDir} />
+              ))}
               <th style={{ textAlign: 'right' }}>Actions</th>
             </tr>
           </thead>
           <tbody>
             {list.length === 0 ? (
-              <tr><td colSpan={6}>
+              <tr><td colSpan={COLUMNS.length + 1}>
                 <div className="empty-state">
                   <div className="empty-state-icon">👥</div>
                   <div className="empty-state-title">No clients yet</div>
@@ -61,7 +97,7 @@ export default function ClientsPage({ onAdd, onEdit, onDelete, onDownloadTemplat
                 </div>
               </td></tr>
             ) : list.map((c) => {
-              const count = invoices.filter((d) => d.clientId === c.id).length;
+              const count = invoiceCounts.get(c.id) || 0;
               const addr = c.address || '';
               return (
                 <tr key={c.id}>
@@ -73,6 +109,12 @@ export default function ClientsPage({ onAdd, onEdit, onDelete, onDownloadTemplat
                   </td>
                   <td style={{ fontSize: 12, fontFamily: 'monospace' }}>{c.gstin || '-'}</td>
                   <td style={{ fontSize: 12 }}>{c.city || '-'}</td>
+                  <td style={{ fontSize: 12 }}>
+                    {c.email ? <a href={'mailto:' + c.email} style={{ color: 'var(--brand-dark)' }}>{c.email}</a> : '-'}
+                  </td>
+                  <td style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
+                    {c.phone ? <a href={'tel:' + c.phone.replace(/\s+/g, '')} style={{ color: 'var(--brand-dark)' }}>{c.phone}</a> : '-'}
+                  </td>
                   <td style={{ fontSize: 12, color: 'var(--muted)', maxWidth: 280 }}>
                     {addr.substring(0, 80)}{addr.length > 80 ? '…' : ''}
                   </td>

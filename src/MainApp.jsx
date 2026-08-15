@@ -3,12 +3,17 @@ import { useApp } from './AppContext';
 import { LOGO_DATA_URI } from './logo';
 import { signOutFirebase } from './auth';
 import { generateDocx } from './docxGen';
+import { generatePdf } from './pdfGen';
 import {
   downloadClientTemplate, downloadDubaiTemplate, downloadInvoiceTemplate,
   exportInvoicesToExcel, normaliseBranch, pickCol, readSheetRows
 } from './excelOps';
 import { buildRestorePrompt, downloadBackupFile, parseBackupFile } from './backupOps';
-import { fmtMoneyForRegion, formatExcelDate, nextAvailableNumber, pad, regionOf, uid } from './utils';
+import { NUMBER_SERIES } from './constants';
+import {
+  fmtMoneyForRegion, formatDocNumber, formatExcelDate, isValidEmail, nextAvailableNumber,
+  pad, regionOf, seriesConfig, seriesKeyFor, uid
+} from './utils';
 
 import Dashboard from './components/Dashboard';
 import InvoiceListPage from './components/InvoiceListPage';
@@ -85,6 +90,10 @@ export default function MainApp() {
   const openInvoiceForm = (docType) => setInvoiceModal({ open: true, docType, editing: null });
 
   const editInvoice = (id) => {
+    // Clicking edit again on the row already being edited closes the editor.
+    if (invoiceModal.open && invoiceModal.editing && invoiceModal.editing.id === id) {
+      return setInvoiceModal({ open: false, docType: 'invoice', editing: null });
+    }
     const d = stateRef.current.invoices.find((x) => x.id === id);
     if (!d) return;
     setTdsOpen(false);
@@ -97,17 +106,23 @@ export default function MainApp() {
     showToast('Deleted');
   }
 
-  async function downloadInvoice(id) {
+  /** `format` is 'word' or 'pdf' — both render the same layout. */
+  async function downloadDocument(id, format) {
     const d = stateRef.current.invoices.find((x) => x.id === id);
     if (!d) return showToast('Document not found', 'error');
+    const label = format === 'pdf' ? 'PDF' : 'Word doc';
     try {
-      const fname = await generateDocx(d, stateRef.current.company);
-      showToast('Word doc downloaded: ' + fname);
+      const fname = format === 'pdf'
+        ? await generatePdf(d, stateRef.current.company)
+        : await generateDocx(d, stateRef.current.company);
+      showToast(label + ' downloaded: ' + fname);
     } catch (err) {
       console.error(err);
-      showToast('Failed to generate Word doc: ' + (err.message || err), 'error');
+      showToast('Failed to generate ' + label + ': ' + (err.message || err), 'error');
     }
   }
+  const downloadInvoice = (id) => downloadDocument(id, 'word');
+  const downloadInvoicePdf = (id) => downloadDocument(id, 'pdf');
 
   function exportToExcel(docType) {
     const list = stateRef.current.invoices.filter((d) => d.docType === docType);
@@ -116,7 +131,7 @@ export default function MainApp() {
     showToast('Exported');
   }
 
-  async function saveInvoiceDoc(doc, preview, setBadField) {
+  async function saveInvoiceDoc(doc, downloadAs, setBadField) {
     const isNew = !doc.id;
     // Reload so we catch invoices created since this tab loaded.
     const latest = await reloadInvoices();
@@ -135,17 +150,14 @@ export default function MainApp() {
         return;
       }
       // New invoice — auto-bump to the next available number on the actual prefix.
-      const n = stateRef.current.numbering;
-      let prefix;
-      if (d.docType === 'proforma') prefix = n.proPrefix;
-      else if (d.branch === 'dubai') prefix = n.invPrefixDbx || 'DSL/26-27/DB-';
-      else if (d.branch === 'pune') prefix = n.invPrefixPune;
-      else prefix = n.invPrefixBlu;
+      const cfg = seriesConfig(stateRef.current.numbering, seriesKeyFor(d.docType, d.branch));
+      let { prefix, pad: padLen, suffix } = cfg;
+      // A hand-typed number outside the configured series keeps its own shape.
       if (!d.invoiceNo.startsWith(prefix)) {
-        const m = d.invoiceNo.match(/^(.*?)(\d+)$/);
-        if (m) prefix = m[1];
+        const m = d.invoiceNo.match(/^(.*?)(\d+)(\D*)$/);
+        if (m) { prefix = m[1]; padLen = m[2].length; suffix = m[3]; }
       }
-      d.invoiceNo = prefix + pad(nextAvailableNumber(latest, prefix, 1), 3);
+      d.invoiceNo = prefix + pad(nextAvailableNumber(latest, prefix, 1), padLen) + suffix;
       showToast('Invoice number was bumped to ' + d.invoiceNo + ' to prevent a duplicate.', 'warn');
     }
 
@@ -180,24 +192,26 @@ export default function MainApp() {
 
     if (isNew) {
       const n = stateRef.current.numbering;
-      await saveNumbering({
-        ...n,
-        nextInvPune: nextAvailableNumber(nextInvoices, n.invPrefixPune, n.nextInvPune),
-        nextInvBlu: nextAvailableNumber(nextInvoices, n.invPrefixBlu, n.nextInvBlu),
-        nextInvDbx: nextAvailableNumber(nextInvoices, n.invPrefixDbx || 'DSL/26-27/DB-', n.nextInvDbx || 41),
-        nextPro: nextAvailableNumber(nextInvoices, n.proPrefix, n.nextPro)
-      });
+      const bumped = { ...n };
+      for (const s of NUMBER_SERIES) {
+        const c = seriesConfig(n, s.key);
+        bumped[s.nextKey] = nextAvailableNumber(nextInvoices, c.prefix, c.next);
+      }
+      await saveNumbering(bumped);
     }
     await saveInvoices(nextInvoices);
 
     setInvoiceModal({ open: false, docType: 'invoice', editing: null });
     showToast('Saved successfully');
-    if (preview) {
+    if (downloadAs) {
+      const label = downloadAs === 'pdf' ? 'PDF' : 'Word doc';
       try {
-        const fname = await generateDocx(d, stateRef.current.company);
-        showToast('Word doc downloaded: ' + fname);
+        const fname = downloadAs === 'pdf'
+          ? await generatePdf(d, stateRef.current.company)
+          : await generateDocx(d, stateRef.current.company);
+        showToast(label + ' downloaded: ' + fname);
       } catch (err) {
-        showToast('Failed to generate Word doc: ' + (err.message || err), 'error');
+        showToast('Failed to generate ' + label + ': ' + (err.message || err), 'error');
       }
     }
   }
@@ -220,19 +234,10 @@ export default function MainApp() {
     // Proformas all share the PI- prefix; the tax invoice needs its branch series.
     const branch = p.branch || 'pune';
     const n = stateRef.current.numbering;
-    let prefix, fallbackCounter;
-    if (branch === 'dubai') {
-      prefix = n.invPrefixDbx || 'DSL/26-27/DB-';
-      fallbackCounter = n.nextInvDbx || 1;
-    } else if (branch === 'bengaluru') {
-      prefix = n.invPrefixBlu;
-      fallbackCounter = n.nextInvBlu;
-    } else {
-      prefix = n.invPrefixPune;
-      fallbackCounter = n.nextInvPune;
-    }
-    const nextNum = nextAvailableNumber(latest, prefix, fallbackCounter);
-    const suggestedNo = prefix + pad(nextNum, 3);
+    const seriesKey = seriesKeyFor('invoice', branch);
+    const cfg = seriesConfig(n, seriesKey);
+    const nextNum = nextAvailableNumber(latest, cfg.prefix, cfg.next);
+    const suggestedNo = formatDocNumber(n, seriesKey, nextNum);
 
     const inputNum = prompt(
       'Convert Proforma "' + p.invoiceNo + '" to a Tax Invoice?\n\n' +
@@ -277,8 +282,7 @@ export default function MainApp() {
 
     // Only advance the counter when the auto-suggested number was accepted.
     if (finalInvoiceNo === suggestedNo) {
-      const key = branch === 'dubai' ? 'nextInvDbx' : branch === 'bengaluru' ? 'nextInvBlu' : 'nextInvPune';
-      await saveNumbering({ ...n, [key]: nextNum + 1 });
+      await saveNumbering({ ...n, [cfg.def.nextKey]: nextNum + 1 });
     }
     await saveInvoices(nextInvoices);
     showToast('✓ Reconciled: created tax invoice ' + finalInvoiceNo + ' from ' + p.invoiceNo);
@@ -358,6 +362,8 @@ export default function MainApp() {
         const address = pickCol(r, 'address', 'clientaddress', 'addr');
         const city = pickCol(r, 'city', 'town');
         const gstin = pickCol(r, 'gstin', 'client_gstin', 'gst').toUpperCase().replace(/[^A-Z0-9]/g, '').substring(0, 15);
+        const email = pickCol(r, 'email', 'email_id', 'client_email', 'emailaddress');
+        const phone = pickCol(r, 'contact_number', 'contact', 'phone', 'mobile', 'client_contact', 'contactno');
 
         const errors = [];
         if (name.toLowerCase().startsWith('note:')) {
@@ -369,8 +375,14 @@ export default function MainApp() {
           else if (gstin.length !== 15) errors.push('gstin must be 15 characters');
           if (name && existingNames.has(name.toLowerCase())) errors.push('client name already exists');
           if (gstin && existingGstins.has(gstin)) errors.push('gstin already exists');
+          // Optional columns — only block the row when what's there is unusable.
+          if (email && !isValidEmail(email)) errors.push('email is not valid');
+          if (phone) {
+            const digits = phone.replace(/\D/g, '');
+            if (digits.length < 7 || digits.length > 15) errors.push('contact_number must be 7–15 digits');
+          }
         }
-        return { rowNo: i + 2, name, legalName, address, city, gstin, errors, valid: errors.length === 0 };
+        return { rowNo: i + 2, name, legalName, address, city, gstin, email, phone, errors, valid: errors.length === 0 };
       });
 
       setClientBulk({ open: true, rows: parsed });
@@ -393,7 +405,10 @@ export default function MainApp() {
     const now = new Date().toISOString();
     for (const r of valid) {
       if (existingGstins.has(r.gstin) || existingNames.has(r.name.toLowerCase())) { skippedNow++; continue; }
-      next.push({ id: uid(), name: r.name, legalName: r.legalName, address: r.address, city: r.city, gstin: r.gstin, createdAt: now });
+      next.push({
+        id: uid(), name: r.name, legalName: r.legalName, address: r.address, city: r.city,
+        gstin: r.gstin, email: r.email, phone: r.phone, createdAt: now
+      });
       existingGstins.add(r.gstin);
       existingNames.add(r.name.toLowerCase());
       added++;
@@ -450,6 +465,9 @@ export default function MainApp() {
       // India uses client_gstin, Dubai uses client_trn — accept either column.
       const taxId = String(first.client_trn || first.client_gstin || '').trim();
 
+      const rowEmail = String(first.client_email || '').trim();
+      const rowPhone = String(first.client_contact || first.contact_number || '').trim();
+
       let client = nextClients.find((c) => (c.name || '').toLowerCase() === String(first.client_name).toLowerCase());
       if (!client) {
         client = {
@@ -457,10 +475,17 @@ export default function MainApp() {
           name: first.client_name,
           address: first.client_address || '',
           gstin: taxId,
+          email: rowEmail,
+          phone: rowPhone,
           country: isDubai ? 'dubai' : 'india',
           createdAt: new Date().toISOString()
         };
         nextClients.push(client);
+      } else if ((rowEmail && !client.email) || (rowPhone && !client.phone)) {
+        // Fill blanks on an existing client, but never overwrite what's there.
+        const filled = { ...client, email: client.email || rowEmail, phone: client.phone || rowPhone };
+        nextClients[nextClients.indexOf(client)] = filled;
+        client = filled;
       }
 
       const items = rowsForInvoice.map((r) => {
@@ -588,6 +613,26 @@ export default function MainApp() {
   const selectedUser = userModal.email ? users.find((u) => u.email === userModal.email) : null;
   const detailsUser = userDetails.email ? users.find((u) => u.email === userDetails.email) : null;
 
+  // Editing a document from its list row expands the form under that row; every
+  // other entry point (new document, TDS manager) still uses the dialog.
+  const editingDoc = invoiceModal.open ? invoiceModal.editing : null;
+  const listHostsEditor = !!editingDoc && (
+    (page === 'invoices' && editingDoc.docType === 'invoice') ||
+    (page === 'proforma' && editingDoc.docType === 'proforma')
+  );
+  const closeEditor = () => setInvoiceModal({ open: false, docType: 'invoice', editing: null });
+  const inlineEditor = listHostsEditor ? (
+    <InvoiceModal
+      key={editingDoc.id}
+      open
+      inline
+      initialDocType={invoiceModal.docType}
+      editingDoc={editingDoc}
+      onClose={closeEditor}
+      onSave={saveInvoiceDoc}
+    />
+  ) : null;
+
   return (
     <div className="app show">
       <div className="topbar">
@@ -632,8 +677,11 @@ export default function MainApp() {
             onEdit={editInvoice}
             onDelete={deleteInvoice}
             onDownload={downloadInvoice}
+            onDownloadPdf={downloadInvoicePdf}
             onExport={exportToExcel}
             onConvert={convertProformaToInvoice}
+            editingId={listHostsEditor ? editingDoc.id : null}
+            editor={inlineEditor}
           />
         )}
         {page === 'clients' && (
@@ -672,10 +720,10 @@ export default function MainApp() {
       </div>
 
       <InvoiceModal
-        open={invoiceModal.open}
+        open={invoiceModal.open && !listHostsEditor}
         initialDocType={invoiceModal.docType}
         editingDoc={invoiceModal.editing}
-        onClose={() => setInvoiceModal({ open: false, docType: 'invoice', editing: null })}
+        onClose={closeEditor}
         onSave={saveInvoiceDoc}
       />
 

@@ -141,7 +141,9 @@ export function AppProvider({ children }) {
     const nextInvoices = Array.isArray(d.invoices) ? d.invoices : [];
     const nextClients = Array.isArray(d.clients) ? d.clients : [];
     const nextUsers = Array.isArray(d.users) ? d.users : [];
-    const nextNumbering = d.numbering && typeof d.numbering === 'object' ? d.numbering : ref.current.numbering;
+    const nextNumbering = d.numbering && typeof d.numbering === 'object'
+      ? { ...DEFAULT_NUMBERING, ...d.numbering }
+      : ref.current.numbering;
     const nextCompany = d.company && typeof d.company === 'object' ? d.company : ref.current.company;
     const nextPerms = d.deptPermissions && typeof d.deptPermissions === 'object' ? d.deptPermissions : ref.current.deptPermissions;
     const nextAdminPass = d.adminPass || ref.current.adminPass;
@@ -252,7 +254,9 @@ export function AppProvider({ children }) {
 
     let numberingToUse = DEFAULT_NUMBERING;
     if (savedNumbering) {
-      numberingToUse = { ...savedNumbering };
+      // Spread the defaults first so installs that predate the padding/suffix
+      // format settings pick them up without losing their own prefixes.
+      numberingToUse = { ...DEFAULT_NUMBERING, ...savedNumbering };
       // Bengaluru invoices use the DSLK prefix; the proforma prefix stays DSL/…/PI-.
       if (numberingToUse.invPrefixBlu === 'DSL/26-27/') numberingToUse.invPrefixBlu = 'DSLK/26-27/';
       // Fill in the Dubai series if this install predates Dubai support.

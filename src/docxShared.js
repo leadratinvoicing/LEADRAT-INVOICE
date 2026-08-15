@@ -58,9 +58,10 @@ export function fmtMoneyAed(n) {
   return 'AED ' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-export function buildFilename(d) {
+/** Word and PDF share one naming scheme so both files sort together. */
+export function buildFilename(d, ext) {
   const fnPrefix = last3(d.invoiceNo);
   const fnClient = safeFile((d.clientName || 'CLIENT').toUpperCase());
   const fnSub = safeFile((d.subType || d.description || '').toUpperCase());
-  return fnPrefix + '-' + fnClient + (fnSub ? ' (' + fnSub + ')' : '') + '.docx';
+  return fnPrefix + '-' + fnClient + (fnSub ? ' (' + fnSub + ')' : '') + '.' + (ext || 'docx');
 }

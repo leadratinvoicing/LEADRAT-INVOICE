@@ -1,17 +1,40 @@
 import { useRef, useState } from 'react';
 import { useApp } from '../AppContext';
-import { branchLabel, fmtDate, fmtMoneyForRegion, regionOf } from '../utils';
+import { branchLabel, fmtDate, fmtMoneyForRegion, parseDateValue, regionOf } from '../utils';
+import SortableTh, { sortRows, useSort } from './SortableTh';
 
 const REGION_TABS = [
   { value: 'all', label: '🌐 All' },
-  { value: 'india', label: '🇮🇳 India (Pune + Bengaluru)' },
+  { value: 'india', label: '🇮🇳 India' },
   { value: 'dubai', label: '🇦🇪 Dubai' }
+];
+
+const RECENT_ACCESSORS = {
+  invoiceNo: (d) => d.invoiceNo || '',
+  docType: (d) => (d.docType === 'invoice' ? 'Invoice' : 'Proforma'),
+  clientName: (d) => d.clientName || '',
+  branch: (d) => branchLabel(d.branch),
+  invoiceDate: (d) => parseDateValue(d.invoiceDate),
+  totalAmount: (d) => +d.totalAmount || 0,
+  status: (d) => (d.status === 'paid' ? 'Cleared' : 'Due')
+};
+
+const RECENT_COLUMNS = [
+  { key: 'invoiceNo', label: 'Invoice No' },
+  { key: 'docType', label: 'Type' },
+  { key: 'clientName', label: 'Client' },
+  { key: 'branch', label: 'Branch' },
+  { key: 'invoiceDate', label: 'Date' },
+  { key: 'totalAmount', label: 'Total' },
+  { key: 'status', label: 'Status' }
 ];
 
 export default function Dashboard({ onOpenTds, onViewUser, onNavigate, onDownloadBackup, onLoadBackup }) {
   const { invoices, clients, users, currentUser } = useApp();
   const [region, setRegion] = useState('all');
   const backupFileRef = useRef(null);
+  // No default column — the table opens in "most recently created first" order.
+  const { sort, toggle, setDir } = useSort(null);
 
   // "india" = pune + bengaluru; "dubai" = dubai; "all" = everything.
   const belongsToRegion = (d) => {
@@ -88,7 +111,12 @@ export default function Dashboard({ onOpenTds, onViewUser, onNavigate, onDownloa
   }
 
   const recentUsers = [...users].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)).slice(0, 5);
-  const recent = [...all].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)).slice(0, 8);
+  // Pick the 8 newest documents first, then let the header sort reorder them.
+  const recent = sortRows(
+    [...all].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)).slice(0, 8),
+    sort,
+    RECENT_ACCESSORS
+  );
 
   return (
     <div className="page show">
@@ -140,7 +168,9 @@ export default function Dashboard({ onOpenTds, onViewUser, onNavigate, onDownloa
           <table>
             <thead>
               <tr>
-                <th>Invoice No</th><th>Type</th><th>Client</th><th>Branch</th><th>Date</th><th>Total</th><th>Status</th>
+                {RECENT_COLUMNS.map((c) => (
+                  <SortableTh key={c.key} label={c.label} sortKey={c.key} sort={sort} onSort={toggle} onSetDir={setDir} />
+                ))}
               </tr>
             </thead>
             <tbody>
