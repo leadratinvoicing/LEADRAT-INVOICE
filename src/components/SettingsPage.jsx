@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useApp } from '../AppContext';
 import { DEFAULT_NUMBERING, NUMBER_SERIES } from '../constants';
-import { deepClone, formatDocNumber, nextAvailableNumber, validatePassword } from '../utils';
+import { belongsToSeries, deepClone, formatDocNumber, nextAvailableNumber, validatePassword } from '../utils';
 import { changeOwnPassword, friendlyAuthError } from '../auth';
 import PasswordInput from './PasswordInput';
 
@@ -403,8 +403,10 @@ export default function SettingsPage() {
             </p>
 
             {NUMBER_SERIES.map((s) => {
-              const usedCount = invoices.filter((d) =>
-                (d.invoiceNo || '').startsWith(String(numDraft[s.prefixKey] || ' '))).length;
+              const seriesPrefix = String(numDraft[s.prefixKey] || '').trim();
+              const usedCount = seriesPrefix
+                ? invoices.filter((d) => belongsToSeries(d.invoiceNo, seriesPrefix)).length
+                : 0;
               return (
                 <div key={s.key} className="numbering-series">
                   <div className="numbering-series-head">

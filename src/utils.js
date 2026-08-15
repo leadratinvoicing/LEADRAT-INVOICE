@@ -236,6 +236,18 @@ export function isValidEmail(e) {
 }
 
 /**
+ * True when `invoiceNo` belongs to the series owning `prefix` — the prefix must
+ * be followed immediately by the counter digits. This keeps a series from
+ * claiming another whose prefix nests inside it, e.g. the Dubai tax invoice
+ * prefix "DSL/26-27/DB-" must not match the Dubai proforma "DSL/26-27/DB-PI-001".
+ */
+export function belongsToSeries(invoiceNo, prefix) {
+  const inv = String(invoiceNo || '').trim();
+  if (!prefix || !inv.startsWith(prefix)) return false;
+  return /^\d/.test(inv.substring(prefix.length));
+}
+
+/**
  * Find the highest invoice number currently in storage that matches the given prefix,
  * extract its numeric suffix, and return that number + 1. Falls back to numbering counter.
  */
@@ -243,9 +255,8 @@ export function nextAvailableNumber(invoices, prefix, fallbackCounter) {
   let highest = (fallbackCounter || 1) - 1;
   for (const d of invoices || []) {
     const inv = (d.invoiceNo || '').trim();
-    if (!inv.startsWith(prefix)) continue;
-    const tail = inv.substring(prefix.length);
-    const m = tail.match(/^(\d+)/);
+    if (!belongsToSeries(inv, prefix)) continue;
+    const m = inv.substring(prefix.length).match(/^(\d+)/);
     if (m) {
       const n = parseInt(m[1], 10);
       if (n > highest) highest = n;
@@ -254,9 +265,10 @@ export function nextAvailableNumber(invoices, prefix, fallbackCounter) {
   return highest + 1;
 }
 
-/** Which of the four series a document belongs to (see NUMBER_SERIES). */
+/** Which of the five series a document belongs to (see NUMBER_SERIES). */
 export function seriesKeyFor(docType, branch) {
-  if (docType === 'proforma') return 'proforma';
+  // Proformas and tax invoices each split India (Pune + Bengaluru) from Dubai.
+  if (docType === 'proforma') return branch === 'dubai' ? 'proformaDubai' : 'proforma';
   if (branch === 'dubai') return 'dubai';
   if (branch === 'bengaluru') return 'bengaluru';
   return 'pune';

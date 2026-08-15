@@ -262,6 +262,16 @@ export function AppProvider({ children }) {
       // Fill in the Dubai series if this install predates Dubai support.
       if (!numberingToUse.invPrefixDbx) numberingToUse.invPrefixDbx = DEFAULT_NUMBERING.invPrefixDbx;
       if (!numberingToUse.nextInvDbx) numberingToUse.nextInvDbx = DEFAULT_NUMBERING.nextInvDbx;
+      // Dubai proformas used to share the India PI series. Give them their own,
+      // derived from the install's India prefix so the two stay recognisable.
+      if (!numberingToUse.proPrefixDbx) {
+        const indiaPro = numberingToUse.proPrefix || DEFAULT_NUMBERING.proPrefix;
+        // "DSL/26-27/PI-" → "DSL/26-27/DB-PI-"
+        numberingToUse.proPrefixDbx = indiaPro.includes('/')
+          ? indiaPro.replace(/([^/]*)$/, 'DB-$1')
+          : 'DB-' + indiaPro;
+      }
+      if (!numberingToUse.nextProDbx) numberingToUse.nextProDbx = DEFAULT_NUMBERING.nextProDbx;
       await Store.set('numbering', numberingToUse);
     }
     setNumbering(numberingToUse); ref.current.numbering = numberingToUse;

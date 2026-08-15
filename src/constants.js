@@ -195,24 +195,30 @@ export const DEFAULT_NUMBERING = {
   invPrefixPune: 'DSLM/26-27/',
   invPrefixBlu: 'DSLK/26-27/',
   invPrefixDbx: 'DSL/26-27/DB-',
+  // Proformas run two independent series, matching the two tax regimes:
+  // India (Pune + Bengaluru) and Dubai.
   proPrefix: 'DSL/26-27/PI-',
+  proPrefixDbx: 'DSL/26-27/DB-PI-',
   nextInvPune: 11,
   nextInvBlu: 7,
   nextInvDbx: 41, // starts after DB-040 per reference
   nextPro: 88,
+  nextProDbx: 1,
   // Format controls — a document number is prefix + zero-padded counter + suffix.
   invPadPune: 3,
   invPadBlu: 3,
   invPadDbx: 3,
   proPad: 3,
+  proPadDbx: 3,
   invSuffixPune: '',
   invSuffixBlu: '',
   invSuffixDbx: '',
-  proSuffix: ''
+  proSuffix: '',
+  proSuffixDbx: ''
 };
 
 /**
- * The four independent document series. Each one owns its own prefix, counter
+ * The five independent document series. Each one owns its own prefix, counter
  * and format, and the Settings → Numbering & Format tab is generated from this
  * list, so adding a series here is all it takes to expose it.
  */
@@ -230,8 +236,12 @@ export const NUMBER_SERIES = [
     prefixKey: 'invPrefixDbx', nextKey: 'nextInvDbx', padKey: 'invPadDbx', suffixKey: 'invSuffixDbx'
   },
   {
-    key: 'proforma', label: 'Proforma Invoice (all branches)', docType: 'proforma', branch: null,
+    key: 'proforma', label: 'India Proforma Invoice (Pune + Bengaluru)', docType: 'proforma', branch: 'india',
     prefixKey: 'proPrefix', nextKey: 'nextPro', padKey: 'proPad', suffixKey: 'proSuffix'
+  },
+  {
+    key: 'proformaDubai', label: 'Dubai Proforma Invoice', docType: 'proforma', branch: 'dubai',
+    prefixKey: 'proPrefixDbx', nextKey: 'nextProDbx', padKey: 'proPadDbx', suffixKey: 'proSuffixDbx'
   }
 ];
 
