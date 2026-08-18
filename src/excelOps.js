@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import { fmtDate } from './utils';
+import { fmtDate, pendingOf, receivedOf } from './utils';
 
 /* ============================================================
    EXCEL TEMPLATES / IMPORT / EXPORT
@@ -95,7 +95,12 @@ export function normaliseBranch(raw) {
   return 'pune';
 }
 
-export function exportInvoicesToExcel(list, docType) {
+/**
+ * `allDocs` is the full document set — a proforma's pending amount depends on the
+ * tax invoices raised from it, which may sit outside the exported slice.
+ */
+export function exportInvoicesToExcel(list, docType, allDocs) {
+  const scope = allDocs || list;
   const data = list.map((d) => ({
     doc_type: d.docType,
     branch: d.branch,
@@ -118,6 +123,12 @@ export function exportInvoicesToExcel(list, docType) {
     total_amount: d.totalAmount,
     payment_mode: d.paymentMode,
     status: d.status,
+    // Reconciliation columns: what came in, what is still owed, and — for a
+    // proforma — the tax invoice(s) it was converted into.
+    received_amount: d.docType === 'proforma' ? '' : receivedOf(d),
+    pending_amount: pendingOf(d, scope),
+    converted_to: d.docType === 'proforma' ? (d.convertedToInvoiceNo || '') : '',
+    raised_against_proforma: d.docType === 'proforma' ? '' : (d.sourceProformaNo || ''),
     due_date: fmtDate(d.dueDate)
   }));
   const wb = XLSX.utils.book_new();

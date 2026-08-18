@@ -316,3 +316,81 @@ export function formatExcelDate(v) {
 export function deepClone(v) {
   return JSON.parse(JSON.stringify(v));
 }
+
+/* ============================================================
+   PAYMENT RECONCILIATION
+   A proforma requests payment; a tax invoice records what the client actually
+   transacted. Every "pending / received" figure is DERIVED from the documents
+   themselves, so no stored total can drift out of sync:
+     · a tax invoice's received amount = total - outstanding
+     · a proforma's pending amount     = total - sum of tax invoices raised from it
+   ============================================================ */
+
+/** Sub-cent differences are noise — net/tax amounts are back-calculated. */
+export const MONEY_EPS = 0.005;
+
+export function round2(n) {
+  return Math.round((+n || 0) * 100) / 100;
+}
+
+/** Tax invoices raised from a proforma — a proforma may be invoiced in parts. */
+export function invoicesForProforma(invoices, proformaId) {
+  if (!proformaId) return [];
+  return (invoices || []).filter((d) => d.docType === 'invoice' && d.sourceProformaId === proformaId);
+}
+
+/** Money actually received against a tax invoice. */
+export function receivedOf(d) {
+  if (!d || d.docType === 'proforma') return 0;
+  const total = round2(d.totalAmount);
+  if (d.receivedAmount !== undefined && d.receivedAmount !== null && d.receivedAmount !== '') {
+    return Math.max(0, Math.min(round2(d.receivedAmount), total));
+  }
+  // Documents saved before receipts were tracked: "cleared" means paid in full,
+  // and an outstanding amount below the total implies the rest came in.
+  if (d.status !== 'due') return total;
+  const out = (d.amountDueOutstanding === undefined || d.amountDueOutstanding === null || d.amountDueOutstanding === '')
+    ? total : round2(d.amountDueOutstanding);
+  return Math.max(0, round2(total - out));
+}
+
+/** What is still owed on a document — the figure behind "pending payments". */
+export function pendingOf(d, invoices) {
+  const total = round2(d.totalAmount);
+  if (d.docType === 'proforma') {
+    const linked = invoicesForProforma(invoices, d.id);
+    // A legacy stamp with no surviving tax invoice still counts as fully invoiced.
+    if (linked.length === 0) return d.convertedToInvoiceId ? 0 : total;
+    return Math.max(0, round2(total - linked.reduce((s, x) => s + (+x.totalAmount || 0), 0)));
+  }
+  return Math.max(0, round2(total - receivedOf(d)));
+}
+
+/**
+ * Reconciliation summary for one proforma: how much of it has been carried into
+ * tax invoices, how much is still pending, and how much of it has been received.
+ */
+export function proformaState(p, invoices) {
+  const total = round2(p.totalAmount);
+  const linked = invoicesForProforma(invoices, p.id);
+  const invoiced = round2(linked.reduce((s, x) => s + (+x.totalAmount || 0), 0));
+  const received = round2(linked.reduce((s, x) => s + receivedOf(x), 0));
+  const pending = pendingOf(p, invoices);
+  let key = 'pending';
+  if (pending <= MONEY_EPS) key = 'invoiced';
+  else if (invoiced > MONEY_EPS) key = 'partial';
+  return { key, total, invoiced, received, pending, linked };
+}
+
+/** Badge label + class for a document's payment state, shared by every table. */
+export function statusBadgeOf(d, invoices) {
+  if (d.docType === 'proforma') {
+    const st = proformaState(d, invoices);
+    if (st.key === 'invoiced') return { key: 'invoiced', label: '\u2713 Invoiced', cls: 'badge-paid' };
+    if (st.key === 'partial') return { key: 'partial', label: 'Part Invoiced', cls: 'badge-partial' };
+    return { key: 'pending', label: 'Pending', cls: 'badge-due' };
+  }
+  if (pendingOf(d, invoices) <= MONEY_EPS) return { key: 'paid', label: 'Cleared', cls: 'badge-paid' };
+  if (receivedOf(d) > MONEY_EPS) return { key: 'partial', label: 'Part Paid', cls: 'badge-partial' };
+  return { key: 'due', label: 'Due', cls: 'badge-due' };
+}

@@ -1,9 +1,9 @@
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useApp } from '../AppContext';
 import { REGION_TABS } from '../constants';
 import {
   branchLabel, filterByUserBranch, filterClientsByUserBranch, fmtDate, fmtMoneyForRegion,
-  parseDateValue, regionOf, visibleRegionsForUser
+  parseDateValue, pendingOf, receivedOf, regionOf, round2, statusBadgeOf, visibleRegionsForUser
 } from '../utils';
 import SortableTh, { sortRows, useSort } from './SortableTh';
 
@@ -14,7 +14,7 @@ const RECENT_ACCESSORS = {
   branch: (d) => branchLabel(d.branch),
   invoiceDate: (d) => parseDateValue(d.invoiceDate),
   totalAmount: (d) => +d.totalAmount || 0,
-  status: (d) => (d.status === 'paid' ? 'Cleared' : 'Due')
+  status: null // filled in per render — a document's state depends on the others
 };
 
 const RECENT_COLUMNS = [
@@ -53,9 +53,21 @@ export default function Dashboard({ onOpenTds, onViewUser, onNavigate, onDownloa
   const all = userScoped.filter(belongsToRegion);
   const inv = all.filter((d) => d.docType === 'invoice');
   const pro = all.filter((d) => d.docType === 'proforma');
-  const totalRev = inv.filter((d) => d.status === 'paid').reduce((s, d) => s + (+d.totalAmount || 0), 0);
-  const totalDue = all.filter((d) => d.status === 'due').reduce((s, d) => s + (+d.amountDueOutstanding || +d.totalAmount || 0), 0);
-  const totalGst = inv.filter((d) => d.status === 'paid').reduce((s, d) => s + (+d.cgst || 0) + (+d.sgst || 0) + (+d.igst || 0), 0);
+  // Revenue is the money actually received on tax invoices, so a part payment
+  // counts for exactly what came in. Pending amounts are derived per document: a
+  // proforma stops being pending for whatever its tax invoices already cover, so
+  // converting one never double-counts the same money.
+  const totalRev = round2(inv.reduce((s, d) => s + receivedOf(d), 0));
+  const invoiceDue = round2(inv.reduce((s, d) => s + pendingOf(d, invoices), 0));
+  const proformaDue = round2(pro.reduce((s, d) => s + pendingOf(d, invoices), 0));
+  const totalDue = round2(invoiceDue + proformaDue);
+  // Tax collected follows the receipts too — a part-paid invoice contributes its share.
+  const totalGst = round2(inv.reduce((s, d) => {
+    const total = +d.totalAmount || 0;
+    const tax = (+d.cgst || 0) + (+d.sgst || 0) + (+d.igst || 0);
+    if (!total || !tax) return s;
+    return s + tax * (receivedOf(d) / total);
+  }, 0));
   const totalNet = inv.reduce((s, d) => s + (+d.netAmount || 0), 0);
 
   // TDS is India-specific — there is no TDS mechanism under UAE VAT.
@@ -88,7 +100,7 @@ export default function Dashboard({ onOpenTds, onViewUser, onNavigate, onDownloa
   const stats = [
     { label: 'Total Invoices', value: inv.length, meta: 'Tax invoices', cls: '', onClick: () => onNavigate('invoices') },
     { label: 'Total Proformas', value: pro.length, meta: 'Proforma invoices', cls: '', onClick: () => onNavigate('proforma') },
-    { label: 'Total Revenue', value: money(totalRev), meta: 'Cleared payments · click to view', cls: 'cleared', onClick: () => onNavigate('invoices', 'paid') },
+    { label: 'Total Revenue', value: money(totalRev), meta: 'Payments received, part payments included · click to view', cls: 'cleared', onClick: () => onNavigate('invoices', 'paid') },
     { label: 'Total Net Amount', value: money(totalNet), meta: 'Net of tax (all invoices) · click to view', cls: 'cleared', onClick: () => onNavigate('invoices') },
     { label: taxLabel, value: money(totalGst), meta: taxMeta + ' · click to view', cls: 'tax', onClick: () => onNavigate('invoices') }
   ];
@@ -101,7 +113,13 @@ export default function Dashboard({ onOpenTds, onViewUser, onNavigate, onDownloa
       onClick: onOpenTds
     });
   }
-  stats.push({ label: 'Outstanding Amount', value: money(totalDue), meta: 'Pending payments · click to view', cls: 'due', onClick: () => onNavigate('invoices', 'due') });
+  stats.push({
+    label: 'Outstanding Amount',
+    value: money(totalDue),
+    meta: money(invoiceDue) + ' on invoices · ' + money(proformaDue) + ' on proformas · click to view',
+    cls: 'due',
+    onClick: () => onNavigate('invoices', 'due')
+  });
   // Total Clients card — pass the current region so the Clients page auto-applies
   // the matching filter (clicking "3" on the Dubai tab lands on a Clients page
   // filtered to those 3 Dubai clients, not the full list).
@@ -128,10 +146,14 @@ export default function Dashboard({ onOpenTds, onViewUser, onNavigate, onDownloa
 
   const recentUsers = [...users].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)).slice(0, 5);
   // Pick the 8 newest documents first, then let the header sort reorder them.
+  const recentAccessors = useMemo(
+    () => ({ ...RECENT_ACCESSORS, status: (d) => statusBadgeOf(d, invoices).label }),
+    [invoices]
+  );
   const recent = sortRows(
     [...all].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)).slice(0, 8),
     sort,
-    RECENT_ACCESSORS
+    recentAccessors
   );
 
   return (
@@ -198,7 +220,9 @@ export default function Dashboard({ onOpenTds, onViewUser, onNavigate, onDownloa
                     <div className="empty-state-text">Create your first invoice to get started.</div>
                   </div>
                 </td></tr>
-              ) : recent.map((d) => (
+              ) : recent.map((d) => {
+                const badge = statusBadgeOf(d, invoices);
+                return (
                 <tr key={d.id}>
                   <td><strong>{d.invoiceNo || ''}</strong></td>
                   <td><span className={'badge ' + (d.docType === 'invoice' ? 'badge-invoice' : 'badge-proforma')}>{d.docType === 'invoice' ? 'Invoice' : 'Proforma'}</span></td>
@@ -206,9 +230,10 @@ export default function Dashboard({ onOpenTds, onViewUser, onNavigate, onDownloa
                   <td style={{ fontSize: 12 }}>{branchLabel(d.branch)}</td>
                   <td>{fmtDate(d.invoiceDate)}</td>
                   <td><strong>{fmtMoneyForRegion(d.totalAmount, regionOf(d.branch))}</strong></td>
-                  <td><span className={'badge ' + (d.status === 'paid' ? 'badge-paid' : 'badge-due')}>{d.status === 'paid' ? 'Cleared' : 'Due'}</span></td>
+                  <td><span className={'badge ' + badge.cls}>{badge.label}</span></td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

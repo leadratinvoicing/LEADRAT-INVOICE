@@ -126,6 +126,8 @@ th.sortable.sorted{color:var(--brand-dark)}
 .badge-proforma{background:#FEF3C7;color:#92400E}
 .badge-paid{background:#D1FAE5;color:#065F46}
 .badge-due{background:#FEE2E2;color:#991B1B}
+/* Part paid / part invoiced — between cleared and due */
+.badge-partial{background:#FEF3C7;color:#92400E}
 .actions-cell{display:flex;gap:6px;justify-content:flex-end}
 .icon-btn{padding:6px 8px;border-radius:6px;color:var(--muted);transition:all 0.2s;font-size:13px}
 .icon-btn:hover{background:var(--bg);color:var(--text)}

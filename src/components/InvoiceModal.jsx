@@ -3,7 +3,9 @@ import { useApp } from '../AppContext';
 import Modal from './Modal';
 import SearchableSelect from './SearchableSelect';
 import { BRANCHES, KNOWN_SUBTYPES, PAYMENT_MODES, SUBTYPE_OPTIONS, VALIDITY_OPTIONS } from '../constants';
-import { dateToInput, nextDocNumber } from '../utils';
+import {
+  dateToInput, fmtMoneyForRegion, MONEY_EPS, nextDocNumber, proformaState, receivedOf, regionOf, round2
+} from '../utils';
 
 function blankItem() {
   const today = new Date().toISOString().slice(0, 10);
@@ -37,8 +39,10 @@ function distinctLegalName(legal, client) {
   return l && l.toLowerCase() !== c.toLowerCase() ? l : '';
 }
 
-export default function InvoiceModal({ open, initialDocType, editingDoc, onClose, onSave, inline }) {
-  const { clients, showToast, stateRef } = useApp();
+export default function InvoiceModal({
+  open, initialDocType, editingDoc, prefillDoc, convertFrom, onClose, onSave, inline
+}) {
+  const { clients, invoices, showToast, stateRef } = useApp();
   const panelRef = useRef(null);
 
   const [docType, setDocType] = useState('invoice');
@@ -60,7 +64,7 @@ export default function InvoiceModal({ open, initialDocType, editingDoc, onClose
   const [tdsStatus, setTdsStatus] = useState('pending');
   const [payMode, setPayMode] = useState('UPI');
   const [status, setStatus] = useState('paid');
-  const [amountDue, setAmountDue] = useState('');
+  const [received, setReceived] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [proformaDueDate, setProformaDueDate] = useState('');
   const [badField, setBadField] = useState(null);
@@ -72,6 +76,10 @@ export default function InvoiceModal({ open, initialDocType, editingDoc, onClose
 
   const isProforma = docType === 'proforma';
   const isEditing = !!editingDoc;
+  // Converting a proforma seeds a brand-new tax invoice from it, so the form is
+  // populated from a draft while still behaving as a new document.
+  const isConverting = !!convertFrom && !isEditing;
+  const sourceDoc = editingDoc || prefillDoc || null;
   const isDubai = branch === 'dubai';
 
   // Only the branches belonging to the chosen country — India offers Pune and
@@ -87,8 +95,11 @@ export default function InvoiceModal({ open, initialDocType, editingDoc, onClose
     if (!open) return;
     setBadField(null);
 
-    if (editingDoc) {
-      const d = editingDoc;
+    // `prefillDoc` seeds a NEW document (proforma → tax invoice conversion),
+    // `editingDoc` loads an existing one — both populate the form identically.
+    const source = editingDoc || prefillDoc;
+    if (source) {
+      const d = source;
       const b = d.branch || 'pune';
       setDocType(d.docType);
       setBranch(b);
@@ -133,10 +144,12 @@ export default function InvoiceModal({ open, initialDocType, editingDoc, onClose
       setTdsStatus(d.tdsStatus || 'pending');
       setPayMode(d.paymentMode || (b === 'dubai' ? 'BANK TRANSFER' : 'UPI'));
       setStatus(d.docType === 'proforma' ? 'due' : (d.status || 'paid'));
-      setAmountDue(
-        d.amountDueOutstanding !== undefined && d.amountDueOutstanding !== null && d.amountDueOutstanding !== ''
-          ? String(d.amountDueOutstanding) : ''
-      );
+      // Receipts are stored as "amount received"; older documents only recorded
+      // the outstanding balance, which receivedOf() back-derives.
+      // Only meaningful while a balance is outstanding — a cleared invoice is
+      // received in full by definition, and the field stays hidden.
+      const rec = (d.docType === 'proforma' || d.status !== 'due') ? 0 : receivedOf(d);
+      setReceived(rec ? String(rec) : '');
       setDueDate(dateToInput(d.dueDate));
       setProformaDueDate(dateToInput(d.dueDate));
     } else {
@@ -155,9 +168,9 @@ export default function InvoiceModal({ open, initialDocType, editingDoc, onClose
       setTdsStatus('pending');
       setPayMode(initialDocType === 'proforma' ? 'NEFT' : 'UPI');
       setStatus(initialDocType === 'proforma' ? 'due' : 'paid');
-      setAmountDue(''); setDueDate(''); setProformaDueDate('');
+      setReceived(''); setDueDate(''); setProformaDueDate('');
     }
-  }, [open, editingDoc, initialDocType]);
+  }, [open, editingDoc, prefillDoc, initialDocType]);
 
   /* ---------- Invoice number autofill (new documents only) ---------- */
   useEffect(() => {
@@ -221,6 +234,22 @@ export default function InvoiceModal({ open, initialDocType, editingDoc, onClose
       tds: (netSum * (parseFloat(tdsRate) || 0) / 100) ? (netSum * (parseFloat(tdsRate) || 0) / 100).toFixed(2) : ''
     };
   }, [items, gstRate, gstType, tdsRate, isDubai]);
+
+  /* ---------- Receipt vs balance ----------
+     The client's transaction drives both figures: what came in counts towards
+     revenue, and the remainder is the balance that stays under "due". */
+  const totalVal = parseFloat(calc.total) || 0;
+  const receivedVal = isProforma ? 0 : (status === 'due' ? Math.max(0, round2(received)) : totalVal);
+  const outstandingVal = isProforma ? 0 : Math.max(0, round2(totalVal - receivedVal));
+
+  // Live reconciliation figures for the proforma this invoice is raised against.
+  const convertState = useMemo(
+    () => (convertFrom ? proformaState(convertFrom, invoices) : null),
+    [convertFrom, invoices]
+  );
+  const proformaPendingAfter = convertState ? Math.max(0, round2(convertState.pending - totalVal)) : 0;
+  const overInvoicing = !!convertState && totalVal > convertState.pending + MONEY_EPS;
+  const money = (n) => fmtMoneyForRegion(n, regionOf(branch));
 
   const updateItem = (idx, field, value) =>
     setItems((list) => list.map((it, i) => (i === idx ? { ...it, [field]: value } : it)));
@@ -287,7 +316,12 @@ export default function InvoiceModal({ open, initialDocType, editingDoc, onClose
     } else {
       if (!payMode) return fail('frmPayMode', 'Payment mode is required');
       if (status === 'due') {
-        if (!amountDue) return fail('frmAmountDue', 'Outstanding amount due is required');
+        if (receivedVal > totalVal + MONEY_EPS) {
+          return fail('frmReceived', 'Amount received cannot be more than the invoice total');
+        }
+        if (totalVal > 0 && receivedVal >= totalVal - MONEY_EPS) {
+          return fail('frmReceived', 'The full amount is received — set Status to "Payments Cleared"');
+        }
         if (!dueDate) return fail('frmDueDate', 'Payment due date is required');
       }
     }
@@ -345,8 +379,14 @@ export default function InvoiceModal({ open, initialDocType, editingDoc, onClose
       tdsStatus,
       paymentMode: isProforma ? '' : payMode,
       status: isProforma ? 'due' : status,
-      amountDueOutstanding: (!isProforma && status === 'due') ? (parseFloat(amountDue) || 0) : 0,
+      // What the client actually transacted, and the balance still owed on it.
+      receivedAmount: receivedVal,
+      amountDueOutstanding: outstandingVal,
       dueDate: isProforma ? proformaDueDate : dueDate,
+      // Set when this tax invoice reconciles a proforma — the link that moves the
+      // invoiced amount out of the proforma's pending payments.
+      sourceProformaId: (sourceDoc && sourceDoc.sourceProformaId) || null,
+      sourceProformaNo: (sourceDoc && sourceDoc.sourceProformaNo) || '',
       updatedAt: new Date().toISOString()
     };
   }
@@ -369,16 +409,51 @@ export default function InvoiceModal({ open, initialDocType, editingDoc, onClose
       <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
       <button className="btn btn-success" onClick={() => submit('word')} disabled={saving}>Save &amp; Word</button>
       <button className="btn btn-success" onClick={() => submit('pdf')} disabled={saving}>Save &amp; PDF</button>
-      <button className="btn btn-primary" onClick={() => submit(null)} disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+      <button className="btn btn-primary" onClick={() => submit(null)} disabled={saving}>
+        {saving ? 'Saving…' : (isConverting ? 'Create Tax Invoice' : 'Save')}
+      </button>
     </>
   );
 
-  const title = isEditing
+  const title = isConverting
+    ? 'New Tax Invoice · reconciling ' + convertFrom.invoiceNo
+    : isEditing
     ? 'Edit ' + (isProforma ? 'Proforma' : 'Tax Invoice') + (editingDoc.invoiceNo ? ' · ' + editingDoc.invoiceNo : '')
     : (initialDocType === 'invoice' ? 'New Tax Invoice' : 'New Proforma Invoice');
 
   const body = (
     <>
+      {isConverting && convertState && (
+        <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 8, padding: 14, marginBottom: 16 }}>
+          <div style={{ fontWeight: 700, color: '#1E40AF', marginBottom: 8, fontSize: 13 }}>
+            🔄 Reconciling proforma {convertFrom.invoiceNo} · {convertFrom.clientName}
+          </div>
+          <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', fontSize: 12, color: '#1E3A8A' }}>
+            <span>Proforma total: <strong>{money(convertState.total)}</strong></span>
+            {convertState.invoiced > MONEY_EPS && (
+              <span>Already invoiced: <strong>{money(convertState.invoiced)}</strong></span>
+            )}
+            <span>Pending before this invoice: <strong>{money(convertState.pending)}</strong></span>
+            <span>This invoice: <strong>{money(totalVal)}</strong></span>
+            <span>Received now: <strong>{money(receivedVal)}</strong></span>
+            <span>Proforma pending after: <strong>{money(proformaPendingAfter)}</strong></span>
+          </div>
+          <div style={{ fontSize: 11, color: '#1E3A8A', marginTop: 8, lineHeight: 1.6 }}>
+            Edit the items and the Payment Status below to match the transaction the client actually made.
+            {' '}{money(receivedVal)} moves into Total Revenue
+            {outstandingVal > MONEY_EPS ? ' and ' + money(outstandingVal) + ' stays as a balance under Due status' : ''}
+            {proformaPendingAfter > MONEY_EPS
+              ? '; ' + money(proformaPendingAfter) + ' remains pending on the proforma and can be converted later'
+              : ''}.
+          </div>
+          {overInvoicing && (
+            <div style={{ fontSize: 11, color: '#92400E', background: '#FEF3C7', borderRadius: 6, padding: '6px 10px', marginTop: 8 }}>
+              ⚠ This invoice ({money(totalVal)}) is larger than the amount still pending on the proforma ({money(convertState.pending)}).
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="form-grid">
         <div className="form-group">
           <label className="form-label">Document Type *</label>
@@ -655,9 +730,9 @@ export default function InvoiceModal({ open, initialDocType, editingDoc, onClose
         {!isProforma && (
           <div className="form-group">
             <label className="form-label">Status <span className="req">*</span></label>
-            <select className="form-input" value={status} onChange={(e) => setStatus(e.target.value)}>
-              <option value="paid">Payments Cleared</option>
-              <option value="due">Amount Due</option>
+            <select className="form-input" value={status} onChange={(e) => { setStatus(e.target.value); setBadField(null); }}>
+              <option value="paid">Payments Cleared — full amount received</option>
+              <option value="due">Amount Due — part or no payment received</option>
             </select>
           </div>
         )}
@@ -666,16 +741,29 @@ export default function InvoiceModal({ open, initialDocType, editingDoc, onClose
       {!isProforma && status === 'due' && (
         <div className="form-grid">
           <div className="form-group">
-            <label className="form-label">Outstanding Amount Due <span className="req">*</span></label>
-            <input ref={bind('frmAmountDue')} type="number" step="0.01" className={cls('frmAmountDue')} placeholder="Enter outstanding amount"
-              value={amountDue} onChange={(e) => { setAmountDue(e.target.value); setBadField(null); }} />
-            <div className="password-hint">Enter the amount the client still owes</div>
+            <label className="form-label">Amount Received{isDubai ? ' (AED)' : ''}</label>
+            <input ref={bind('frmReceived')} type="number" step="0.01" min="0" className={cls('frmReceived')}
+              placeholder="0.00 — leave empty if nothing received yet"
+              value={received} onChange={(e) => { setReceived(e.target.value); setBadField(null); }} />
+            <div className="password-hint">Part payment the client has already transacted · counts towards Total Revenue</div>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Outstanding Amount Due — auto</label>
+            <input type="number" step="0.01" className="form-input" value={outstandingVal.toFixed(2)}
+              readOnly style={{ background: '#F3F4F6', cursor: 'not-allowed', fontWeight: 600 }} />
+            <div className="password-hint">Total − Amount Received · the balance shown under Due status</div>
           </div>
           <div className="form-group">
             <label className="form-label">Payment Due Date <span className="req">*</span></label>
             <input ref={bind('frmDueDate')} type="date" className={cls('frmDueDate')}
               value={dueDate} onChange={(e) => { setDueDate(e.target.value); setBadField(null); }} />
           </div>
+        </div>
+      )}
+
+      {!isProforma && status === 'paid' && totalVal > 0 && (
+        <div style={{ background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: 6, padding: '8px 12px', fontSize: 12, color: '#065F46' }}>
+          ✓ {money(totalVal)} received in full · nothing outstanding on this invoice.
         </div>
       )}
 

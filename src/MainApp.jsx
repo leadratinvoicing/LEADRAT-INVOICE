@@ -11,8 +11,9 @@ import {
 import { buildRestorePrompt, downloadBackupFile, parseBackupFile } from './backupOps';
 import { NUMBER_SERIES } from './constants';
 import {
-  fmtMoneyForRegion, formatDocNumber, formatExcelDate, isValidEmail, nextAvailableNumber,
-  pad, regionOf, seriesConfig, seriesKeyFor, uid
+  deepClone, fmtMoneyForRegion, formatExcelDate, invoicesForProforma, isValidEmail, MONEY_EPS,
+  nextAvailableNumber, nextDocNumber, pad, proformaState, receivedOf, regionOf, round2,
+  seriesConfig, seriesKeyFor, uid
 } from './utils';
 
 import Dashboard from './components/Dashboard';
@@ -38,6 +39,8 @@ const NAV = [
   { page: 'settings', label: 'Settings', perm: 'settings' }
 ];
 
+const CLOSED_INVOICE_MODAL = { open: false, docType: 'invoice', editing: null, prefill: null, convertFrom: null };
+
 export default function MainApp() {
   const {
     currentUser, users, stateRef,
@@ -52,7 +55,9 @@ export default function MainApp() {
   const [invoiceStatusFilter, setInvoiceStatusFilter] = useState('');
   const [clientRegionFilter, setClientRegionFilter] = useState('');
 
-  const [invoiceModal, setInvoiceModal] = useState({ open: false, docType: 'invoice', editing: null });
+  // `prefill` seeds a new document from an existing one and `convertFrom` is the
+  // proforma being reconciled — both empty for a plain new/edit.
+  const [invoiceModal, setInvoiceModal] = useState(CLOSED_INVOICE_MODAL);
   const [clientModal, setClientModal] = useState({ open: false, editing: null });
   const [clientBulk, setClientBulk] = useState({ open: false, rows: [] });
   const [userModal, setUserModal] = useState({ open: false, email: null });
@@ -90,22 +95,42 @@ export default function MainApp() {
   }
 
   /* ---------------- INVOICES ---------------- */
-  const openInvoiceForm = (docType) => setInvoiceModal({ open: true, docType, editing: null });
+  const openInvoiceForm = (docType) => setInvoiceModal({ ...CLOSED_INVOICE_MODAL, open: true, docType });
 
   const editInvoice = (id) => {
     // Clicking edit again on the row already being edited closes the editor.
     if (invoiceModal.open && invoiceModal.editing && invoiceModal.editing.id === id) {
-      return setInvoiceModal({ open: false, docType: 'invoice', editing: null });
+      return setInvoiceModal(CLOSED_INVOICE_MODAL);
     }
     const d = stateRef.current.invoices.find((x) => x.id === id);
     if (!d) return;
     setTdsOpen(false);
-    setInvoiceModal({ open: true, docType: d.docType, editing: d });
+    setInvoiceModal({ ...CLOSED_INVOICE_MODAL, open: true, docType: d.docType, editing: d });
   };
 
   async function deleteInvoice(id) {
-    if (!confirm('Delete this document? This cannot be undone.')) return;
-    await saveInvoices(stateRef.current.invoices.filter((d) => d.id !== id));
+    const doomed = stateRef.current.invoices.find((x) => x.id === id);
+    const linkedNo = doomed && doomed.sourceProformaNo;
+    const msg = linkedNo
+      ? 'Delete this tax invoice? This cannot be undone.\n\nIts amount goes back to pending on proforma ' + linkedNo + '.'
+      : 'Delete this document? This cannot be undone.';
+    if (!confirm(msg)) return;
+
+    let next = stateRef.current.invoices.filter((d) => d.id !== id);
+    // Deleting a tax invoice reopens that slice of its proforma, so the stamps
+    // pointing at it have to go too.
+    if (doomed && doomed.sourceProformaId) {
+      const stillLinked = invoicesForProforma(next, doomed.sourceProformaId);
+      const last = stillLinked[stillLinked.length - 1] || null;
+      next = next.map((x) => (x.id !== doomed.sourceProformaId ? x : {
+        ...x,
+        convertedInvoiceIds: stillLinked.map((v) => v.id),
+        convertedToInvoiceId: last ? last.id : null,
+        convertedToInvoiceNo: last ? last.invoiceNo : '',
+        updatedAt: new Date().toISOString()
+      }));
+    }
+    await saveInvoices(next);
     showToast('Deleted');
   }
 
@@ -130,7 +155,7 @@ export default function MainApp() {
   function exportToExcel(docType) {
     const list = stateRef.current.invoices.filter((d) => d.docType === docType);
     if (list.length === 0) return showToast('No data to export', 'warn');
-    exportInvoicesToExcel(list, docType);
+    exportInvoicesToExcel(list, docType, stateRef.current.invoices);
     showToast('Exported');
   }
 
@@ -189,9 +214,43 @@ export default function MainApp() {
       }
     }
 
+    // Reconciliation links live on the documents rather than in the form, so
+    // carry them across an edit — otherwise saving a document would silently
+    // break a proforma → tax invoice link.
+    if (existing) {
+      if (!d.sourceProformaId && existing.sourceProformaId) {
+        d.sourceProformaId = existing.sourceProformaId;
+        d.sourceProformaNo = existing.sourceProformaNo || '';
+      }
+      if (existing.docType === 'proforma') {
+        d.convertedToInvoiceId = existing.convertedToInvoiceId || null;
+        d.convertedToInvoiceNo = existing.convertedToInvoiceNo || '';
+        d.convertedInvoiceIds = existing.convertedInvoiceIds || [];
+      }
+    }
+
     const nextInvoices = isNew || !existing
       ? [...latest, d]
       : latest.map((x) => (x.id === d.id ? d : x));
+
+    // Stamp the proforma this tax invoice reconciles. Pending amounts are always
+    // derived from the linked invoices, so these fields are only for display.
+    let reconciled = null;
+    if (d.docType === 'invoice' && d.sourceProformaId) {
+      const idx = nextInvoices.findIndex((x) => x.id === d.sourceProformaId && x.docType === 'proforma');
+      if (idx !== -1) {
+        const source = nextInvoices[idx];
+        const stamped = {
+          ...source,
+          convertedToInvoiceId: d.id,
+          convertedToInvoiceNo: d.invoiceNo,
+          convertedInvoiceIds: Array.from(new Set([...(source.convertedInvoiceIds || []), d.id])),
+          updatedAt: new Date().toISOString()
+        };
+        nextInvoices[idx] = stamped;
+        reconciled = { proforma: stamped, state: proformaState(stamped, nextInvoices) };
+      }
+    }
 
     if (isNew) {
       const n = stateRef.current.numbering;
@@ -204,8 +263,18 @@ export default function MainApp() {
     }
     await saveInvoices(nextInvoices);
 
-    setInvoiceModal({ open: false, docType: 'invoice', editing: null });
-    showToast('Saved successfully');
+    setInvoiceModal(CLOSED_INVOICE_MODAL);
+    if (reconciled) {
+      const region = regionOf(d.branch);
+      const pending = reconciled.state.pending;
+      showToast('\u2713 ' + d.invoiceNo + ' ' + (isNew ? 'created from ' : 'updated against ') + reconciled.proforma.invoiceNo +
+        ' \u00B7 ' + fmtMoneyForRegion(receivedOf(d), region) + ' received' +
+        (pending > MONEY_EPS
+          ? ' \u00B7 ' + fmtMoneyForRegion(pending, region) + ' still pending on the proforma'
+          : ' \u00B7 proforma fully invoiced'));
+    } else {
+      showToast('Saved successfully');
+    }
     if (downloadAs) {
       const label = downloadAs === 'pdf' ? 'PDF' : 'Word doc';
       try {
@@ -220,75 +289,70 @@ export default function MainApp() {
   }
 
   /**
-   * Reconcile a proforma into a tax invoice. The new invoice inherits the
-   * proforma's line items, client and totals, but gets a fresh branch-specific
-   * number. The proforma is stamped so it can't be converted twice, and the new
-   * invoice keeps a link back to its source.
+   * Reconcile a proforma into a tax invoice. This opens the tax invoice form
+   * seeded from the proforma so the items, amounts and the receipt can be edited
+   * to match the transaction the client actually made; saving it is what moves
+   * the money out of the proforma's pending payments (see saveInvoiceDoc).
+   *
+   * A proforma can be invoiced in parts — every tax invoice carries
+   * `sourceProformaId`, and whatever those invoices do not cover stays pending.
    */
-  async function convertProformaToInvoice(proformaId) {
+  async function startProformaConversion(proformaId) {
+    if (!userCanAccess('invoices', 'create')) {
+      return showToast('You do not have permission to create tax invoices', 'error');
+    }
     const latest = await reloadInvoices();
     const p = latest.find((x) => x.id === proformaId);
     if (!p || p.docType !== 'proforma') return showToast('Proforma not found', 'error');
-    if (p.convertedToInvoiceId) {
-      const existing = latest.find((x) => x.id === p.convertedToInvoiceId);
-      return showToast('Already reconciled to ' + (existing ? existing.invoiceNo : '—') + '. Delete the tax invoice first if you need to redo.', 'error');
+
+    const st = proformaState(p, latest);
+    if (st.pending <= MONEY_EPS) {
+      const last = st.linked[st.linked.length - 1] || null;
+      return showToast('Proforma ' + p.invoiceNo + ' is already fully invoiced' +
+        (last ? ' (' + last.invoiceNo + ')' : '') + '. Edit or delete that tax invoice to redo it.', 'error');
     }
 
-    // Proformas all share the PI- prefix; the tax invoice needs its branch series.
     const branch = p.branch || 'pune';
-    const n = stateRef.current.numbering;
-    const seriesKey = seriesKeyFor('invoice', branch);
-    const cfg = seriesConfig(n, seriesKey);
-    const nextNum = nextAvailableNumber(latest, cfg.prefix, cfg.next);
-    const suggestedNo = formatDocNumber(n, seriesKey, nextNum);
-
-    const inputNum = prompt(
-      'Convert Proforma "' + p.invoiceNo + '" to a Tax Invoice?\n\n' +
-      'Client: ' + p.clientName + '\n' +
-      'Total: ' + fmtMoneyForRegion(p.totalAmount, regionOf(branch)) + '\n\n' +
-      'New tax invoice number:',
-      suggestedNo
-    );
-    if (!inputNum) return;
-    const finalInvoiceNo = inputNum.trim();
-    if (!finalInvoiceNo) return;
-
-    if (latest.some((x) => x.docType === 'invoice' && x.invoiceNo === finalInvoiceNo)) {
-      return showToast('Invoice number "' + finalInvoiceNo + '" already exists. Try a different number.', 'error');
-    }
-
     const today = new Date().toISOString().slice(0, 10);
-    const now = new Date().toISOString();
-    const newInvoice = {
-      ...JSON.parse(JSON.stringify(p)),
-      id: uid(),
+    const draft = {
+      ...deepClone(p),
+      id: null,
       docType: 'invoice',
-      invoiceNo: finalInvoiceNo,
+      invoiceNo: nextDocNumber(stateRef.current.numbering, latest, 'invoice', branch),
       invoiceDate: today,
       paymentMode: p.paymentMode || (branch === 'dubai' ? 'BANK TRANSFER' : 'NEFT'),
-      status: 'due',
-      amountDueOutstanding: p.totalAmount,
+      // Converting normally means the money has arrived; the form's Payment
+      // Status can be switched to "Amount Due" to record a part payment instead.
+      status: 'paid',
+      receivedAmount: null,
+      amountDueOutstanding: 0,
       dueDate: p.dueDate || today,
       sourceProformaId: p.id,
-      sourceProformaNo: p.invoiceNo,
-      createdAt: now,
-      updatedAt: now
+      sourceProformaNo: p.invoiceNo
     };
-    delete newInvoice.convertedToInvoiceId;
-    delete newInvoice.convertedToInvoiceNo;
+    delete draft.convertedToInvoiceId;
+    delete draft.convertedToInvoiceNo;
+    delete draft.convertedInvoiceIds;
+    delete draft.createdAt;
+    delete draft.updatedAt;
 
-    const nextInvoices = latest
-      .map((x) => (x.id === p.id
-        ? { ...x, convertedToInvoiceId: newInvoice.id, convertedToInvoiceNo: finalInvoiceNo, updatedAt: now }
-        : x))
-      .concat(newInvoice);
-
-    // Only advance the counter when the auto-suggested number was accepted.
-    if (finalInvoiceNo === suggestedNo) {
-      await saveNumbering({ ...n, [cfg.def.nextKey]: nextNum + 1 });
+    // A proforma that has already been part-invoiced opens as a single balance
+    // line, so the default is the amount still pending — not the full proforma.
+    if (st.invoiced > MONEY_EPS) {
+      const src = (Array.isArray(p.items) && p.items[0]) || p;
+      const rate = +p.gstRate || (branch === 'dubai' ? 5 : 18);
+      draft.items = [{
+        ...deepClone(src),
+        subType: 'Balance Pay',
+        paymentDate: today,
+        totalAmount: st.pending,
+        netAmount: round2(st.pending / (1 + rate / 100))
+      }];
+      draft.totalAmount = st.pending;
     }
-    await saveInvoices(nextInvoices);
-    showToast('✓ Reconciled: created tax invoice ' + finalInvoiceNo + ' from ' + p.invoiceNo);
+
+    setTdsOpen(false);
+    setInvoiceModal({ open: true, docType: 'invoice', editing: null, prefill: draft, convertFrom: p });
   }
 
   /* ---------------- BACKUP / RESTORE ---------------- */
@@ -623,7 +687,7 @@ export default function MainApp() {
     (page === 'invoices' && editingDoc.docType === 'invoice') ||
     (page === 'proforma' && editingDoc.docType === 'proforma')
   );
-  const closeEditor = () => setInvoiceModal({ open: false, docType: 'invoice', editing: null });
+  const closeEditor = () => setInvoiceModal(CLOSED_INVOICE_MODAL);
   const inlineEditor = listHostsEditor ? (
     <InvoiceModal
       key={editingDoc.id}
@@ -635,6 +699,9 @@ export default function MainApp() {
       onSave={saveInvoiceDoc}
     />
   ) : null;
+
+  // Converting a proforma always uses the dialog — the new tax invoice belongs
+  // to the invoices list, not to the proforma row it was started from.
 
   return (
     <div className="app show">
@@ -682,7 +749,7 @@ export default function MainApp() {
             onDownload={downloadInvoice}
             onDownloadPdf={downloadInvoicePdf}
             onExport={exportToExcel}
-            onConvert={convertProformaToInvoice}
+            onConvert={startProformaConversion}
             editingId={listHostsEditor ? editingDoc.id : null}
             editor={inlineEditor}
           />
@@ -727,6 +794,8 @@ export default function MainApp() {
         open={invoiceModal.open && !listHostsEditor}
         initialDocType={invoiceModal.docType}
         editingDoc={invoiceModal.editing}
+        prefillDoc={invoiceModal.prefill}
+        convertFrom={invoiceModal.convertFrom}
         onClose={closeEditor}
         onSave={saveInvoiceDoc}
       />
