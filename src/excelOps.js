@@ -128,6 +128,7 @@ export function exportInvoicesToExcel(list, docType, allDocs) {
     received_amount: d.docType === 'proforma' ? '' : receivedOf(d),
     pending_amount: pendingOf(d, scope),
     converted_to: d.docType === 'proforma' ? (d.convertedToInvoiceNo || '') : '',
+    created_by: d.createdBy || '',
     raised_against_proforma: d.docType === 'proforma' ? '' : (d.sourceProformaNo || ''),
     due_date: fmtDate(d.dueDate)
   }));

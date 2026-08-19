@@ -354,16 +354,46 @@ export function receivedOf(d) {
   return Math.max(0, round2(total - out));
 }
 
-/** What is still owed on a document — the figure behind "pending payments". */
+/**
+ * What is still to be RECEIVED on a document — the figure behind "pending
+ * payments". A proforma keeps showing its unpaid balance even after it has been
+ * converted: raising the tax invoice does not make the money arrive, only the
+ * receipt recorded on that invoice does.
+ */
 export function pendingOf(d, invoices) {
   const total = round2(d.totalAmount);
   if (d.docType === 'proforma') {
     const linked = invoicesForProforma(invoices, d.id);
-    // A legacy stamp with no surviving tax invoice still counts as fully invoiced.
+    // A legacy stamp with no surviving tax invoice counts as settled in full.
     if (linked.length === 0) return d.convertedToInvoiceId ? 0 : total;
-    return Math.max(0, round2(total - linked.reduce((s, x) => s + (+x.totalAmount || 0), 0)));
+    return Math.max(0, round2(total - linked.reduce((s, x) => s + receivedOf(x), 0)));
   }
   return Math.max(0, round2(total - receivedOf(d)));
+}
+
+/**
+ * The slice of a proforma no tax invoice covers yet — what "Convert" still has
+ * left to raise. Distinct from pendingOf(): invoicing the whole proforma ends
+ * the conversion, while the balance stays pending until the client pays it.
+ */
+export function unbilledOf(proforma, invoices) {
+  const total = round2(proforma.totalAmount);
+  const linked = invoicesForProforma(invoices, proforma.id);
+  if (linked.length === 0) return proforma.convertedToInvoiceId ? 0 : total;
+  return Math.max(0, round2(total - linked.reduce((s, x) => s + (+x.totalAmount || 0), 0)));
+}
+
+/**
+ * A document's contribution to the outstanding total. A tax invoice raised from
+ * a proforma adds nothing of its own — its balance is already inside that
+ * proforma's pending amount, and counting both would double up.
+ */
+export function outstandingOf(d, invoices) {
+  if (d.docType === 'invoice' && d.sourceProformaId &&
+      (invoices || []).some((x) => x.id === d.sourceProformaId && x.docType === 'proforma')) {
+    return 0;
+  }
+  return pendingOf(d, invoices);
 }
 
 /**
@@ -375,11 +405,17 @@ export function proformaState(p, invoices) {
   const linked = invoicesForProforma(invoices, p.id);
   const invoiced = round2(linked.reduce((s, x) => s + (+x.totalAmount || 0), 0));
   const received = round2(linked.reduce((s, x) => s + receivedOf(x), 0));
-  const pending = pendingOf(p, invoices);
+  const pending = pendingOf(p, invoices);   // still to be received
+  const unbilled = unbilledOf(p, invoices); // still to be invoiced
+
+  // 'pending'  — no tax invoice raised yet
+  // 'partial'  — invoiced in part, the rest can still be converted
+  // 'awaiting' — fully invoiced, money still to come in
+  // 'invoiced' — fully invoiced and fully received
   let key = 'pending';
-  if (pending <= MONEY_EPS) key = 'invoiced';
+  if (unbilled <= MONEY_EPS) key = pending > MONEY_EPS ? 'awaiting' : 'invoiced';
   else if (invoiced > MONEY_EPS) key = 'partial';
-  return { key, total, invoiced, received, pending, linked };
+  return { key, total, invoiced, received, pending, unbilled, linked };
 }
 
 /** Badge label + class for a document's payment state, shared by every table. */
@@ -387,6 +423,7 @@ export function statusBadgeOf(d, invoices) {
   if (d.docType === 'proforma') {
     const st = proformaState(d, invoices);
     if (st.key === 'invoiced') return { key: 'invoiced', label: '\u2713 Invoiced', cls: 'badge-paid' };
+    if (st.key === 'awaiting') return { key: 'awaiting', label: 'Awaiting Payment', cls: 'badge-partial' };
     if (st.key === 'partial') return { key: 'partial', label: 'Part Invoiced', cls: 'badge-partial' };
     return { key: 'pending', label: 'Pending', cls: 'badge-due' };
   }

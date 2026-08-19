@@ -3,7 +3,7 @@ import { useApp } from '../AppContext';
 import { REGION_TABS } from '../constants';
 import {
   branchLabel, filterByUserBranch, filterClientsByUserBranch, fmtDate, fmtMoneyForRegion,
-  parseDateValue, pendingOf, receivedOf, regionOf, round2, statusBadgeOf, visibleRegionsForUser
+  outstandingOf, parseDateValue, receivedOf, regionOf, round2, statusBadgeOf, visibleRegionsForUser
 } from '../utils';
 import SortableTh, { sortRows, useSort } from './SortableTh';
 
@@ -58,8 +58,8 @@ export default function Dashboard({ onOpenTds, onViewUser, onNavigate, onDownloa
   // proforma stops being pending for whatever its tax invoices already cover, so
   // converting one never double-counts the same money.
   const totalRev = round2(inv.reduce((s, d) => s + receivedOf(d), 0));
-  const invoiceDue = round2(inv.reduce((s, d) => s + pendingOf(d, invoices), 0));
-  const proformaDue = round2(pro.reduce((s, d) => s + pendingOf(d, invoices), 0));
+  const invoiceDue = round2(inv.reduce((s, d) => s + outstandingOf(d, invoices), 0));
+  const proformaDue = round2(pro.reduce((s, d) => s + outstandingOf(d, invoices), 0));
   const totalDue = round2(invoiceDue + proformaDue);
   // Tax collected follows the receipts too — a part-paid invoice contributes its share.
   const totalGst = round2(inv.reduce((s, d) => {
@@ -97,12 +97,17 @@ export default function Dashboard({ onOpenTds, onViewUser, onNavigate, onDownloa
   const taxLabel = region === 'dubai' ? 'Total VAT Collected' : 'Total GST Collected';
   const taxMeta = region === 'dubai' ? 'VAT @ 5% (Dubai)' : 'CGST+SGST+IGST';
 
+  // Drilling in keeps the region that is selected here: the Dubai tab opens
+  // Dubai documents only, the India tab opens Pune + Bengaluru only.
+  const regionArg = region === 'all' ? '' : region;
+  const regionNote = region === 'all' ? '' : (region === 'dubai' ? ' · Dubai only' : ' · India only');
+
   const stats = [
-    { label: 'Total Invoices', value: inv.length, meta: 'Tax invoices', cls: '', onClick: () => onNavigate('invoices') },
-    { label: 'Total Proformas', value: pro.length, meta: 'Proforma invoices', cls: '', onClick: () => onNavigate('proforma') },
-    { label: 'Total Revenue', value: money(totalRev), meta: 'Payments received, part payments included · click to view', cls: 'cleared', onClick: () => onNavigate('invoices', 'paid') },
-    { label: 'Total Net Amount', value: money(totalNet), meta: 'Net of tax (all invoices) · click to view', cls: 'cleared', onClick: () => onNavigate('invoices') },
-    { label: taxLabel, value: money(totalGst), meta: taxMeta + ' · click to view', cls: 'tax', onClick: () => onNavigate('invoices') }
+    { label: 'Total Invoices', value: inv.length, meta: 'Tax invoices' + (regionNote || ' · click to view'), cls: '', onClick: () => onNavigate('invoices', '', regionArg) },
+    { label: 'Total Proformas', value: pro.length, meta: 'Proforma invoices' + (regionNote || ' · click to view'), cls: '', onClick: () => onNavigate('proforma', '', regionArg) },
+    { label: 'Total Revenue', value: money(totalRev), meta: 'Payments received, part payments included · click to view', cls: 'cleared', onClick: () => onNavigate('invoices', 'paid', regionArg) },
+    { label: 'Total Net Amount', value: money(totalNet), meta: 'Net of tax (all invoices) · click to view', cls: 'cleared', onClick: () => onNavigate('invoices', '', regionArg) },
+    { label: taxLabel, value: money(totalGst), meta: taxMeta + ' · click to view', cls: 'tax', onClick: () => onNavigate('invoices', '', regionArg) }
   ];
   if (showTds) {
     stats.push({
@@ -118,7 +123,7 @@ export default function Dashboard({ onOpenTds, onViewUser, onNavigate, onDownloa
     value: money(totalDue),
     meta: money(invoiceDue) + ' on invoices · ' + money(proformaDue) + ' on proformas · click to view',
     cls: 'due',
-    onClick: () => onNavigate('invoices', 'due')
+    onClick: () => onNavigate('invoices', 'due', regionArg)
   });
   // Total Clients card — pass the current region so the Clients page auto-applies
   // the matching filter (clicking "3" on the Dubai tab lands on a Clients page

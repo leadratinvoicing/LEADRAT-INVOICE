@@ -7,14 +7,23 @@ import {
 } from '../utils';
 import SortableTh, { sortRows, useSort } from './SortableTh';
 
+/**
+ * The branch filter also offers the two regions, so a dashboard card opened from
+ * the India or Dubai tab lands on exactly that region's documents.
+ */
+const BRANCH_FILTERS = [
+  { value: 'india', label: '🇮🇳 India (Pune + Bengaluru)' },
+  ...BRANCHES.map((b) => ({ value: b.value, label: b.label }))
+];
+
 export default function InvoiceListPage({
-  docType, initialStatus, onNew, onEdit, onDelete, onDownload, onDownloadPdf, onExport, onConvert,
-  editingId, editor
+  docType, initialStatus, initialRegion, onNew, onEdit, onDelete, onPreview, onDownload, onDownloadPdf,
+  onExport, onConvert, editingId, editor
 }) {
   const { invoices, currentUser } = useApp();
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState(initialStatus || '');
-  const [branch, setBranch] = useState('');
+  const [branch, setBranch] = useState(initialRegion || '');
   // Newest first by default, matching how the list behaved before sorting existed.
   const { sort, toggle, setDir } = useSort('invoiceDate', 'desc');
 
@@ -32,6 +41,7 @@ export default function InvoiceListPage({
     totalAmount: (d) => +d.totalAmount || 0,
     pending: (d) => pendingOf(d, invoices),
     status: (d) => statusBadgeOf(d, invoices).label,
+    createdBy: (d) => d.createdBy || '',
     dueDate: (d) => parseDateValue(d.dueDate || d.invoiceDate)
   }), [invoices]);
 
@@ -43,13 +53,15 @@ export default function InvoiceListPage({
     { key: 'invoiceDate', label: 'Date' },
     { key: 'description', label: 'Description' },
     { key: 'totalAmount', label: 'Total' },
-    { key: 'pending', label: isInvoice ? 'Balance' : 'Pending' },
+    { key: 'pending', label: 'Pending' },
     { key: 'status', label: 'Status' }
   ];
   if (!isInvoice) columns.push({ key: 'dueDate', label: 'Due Date' });
+  columns.push({ key: 'createdBy', label: 'Created By' });
 
-  // Dashboard cards deep-link here with a status pre-selected.
+  // Dashboard cards deep-link here with a status and/or a region pre-applied.
   useEffect(() => { setStatus(initialStatus || ''); }, [initialStatus]);
+  useEffect(() => { setBranch(initialRegion || ''); }, [initialRegion]);
 
   const s = search.toLowerCase();
   // Start from the documents this user is allowed to see (based on branchAccess)
@@ -58,7 +70,8 @@ export default function InvoiceListPage({
     list = list.filter((d) =>
       (d.invoiceNo || '').toLowerCase().includes(s) ||
       (d.clientName || '').toLowerCase().includes(s) ||
-      (d.clientGstin || '').toLowerCase().includes(s)
+      (d.clientGstin || '').toLowerCase().includes(s) ||
+      (d.createdBy || '').toLowerCase().includes(s)
     );
   }
   if (status) {
@@ -70,7 +83,9 @@ export default function InvoiceListPage({
       return key === status;
     });
   }
-  if (branch) list = list.filter((d) => d.branch === branch);
+  // 'india' is the two Indian branches together; anything else is a single branch.
+  if (branch === 'india') list = list.filter((d) => d.branch !== 'dubai');
+  else if (branch) list = list.filter((d) => d.branch === branch);
   list = sortRows(list, sort, accessors);
 
   return (
@@ -89,7 +104,7 @@ export default function InvoiceListPage({
       <div className="filter-bar">
         <input
           type="text" className="form-input search-input"
-          placeholder={isInvoice ? 'Search invoice no, client, GSTIN...' : 'Search proforma no, client...'}
+          placeholder={isInvoice ? 'Search invoice no, client, GSTIN, creator...' : 'Search proforma no, client, creator...'}
           value={search} onChange={(e) => setSearch(e.target.value)}
         />
         <select className="form-input" value={status} onChange={(e) => setStatus(e.target.value)}>
@@ -104,13 +119,14 @@ export default function InvoiceListPage({
             <>
               <option value="pending">Pending</option>
               <option value="partial">Part Invoiced</option>
+              <option value="awaiting">Awaiting Payment</option>
               <option value="invoiced">Invoiced</option>
             </>
           )}
         </select>
         <select className="form-input" value={branch} onChange={(e) => setBranch(e.target.value)}>
           <option value="">All Branches</option>
-          {BRANCHES.map((b) => <option key={b.value} value={b.value}>{b.label}</option>)}
+          {BRANCH_FILTERS.map((b) => <option key={b.value} value={b.value}>{b.label}</option>)}
         </select>
       </div>
 
@@ -141,14 +157,15 @@ export default function InvoiceListPage({
               const isEditingRow = editingId === d.id && !!editor;
 
               // Proforma rows carry their reconciliation trail: which tax invoices
-              // were raised from them and how much of the proforma they covered.
+              // were raised from them, how much they covered and what came in.
               const pro = isInvoice ? null : proformaState(d, invoices);
               const linkedNos = pro ? pro.linked.map((x) => x.invoiceNo).join(', ') : '';
               const statusTitle = isInvoice
                 ? (money(receivedOf(d)) + ' received' + (pending > MONEY_EPS ? ' · ' + money(pending) + ' outstanding' : ''))
                 : (pro.invoiced > MONEY_EPS
                   ? money(pro.invoiced) + ' invoiced' + (linkedNos ? ' (' + linkedNos + ')' : '') +
-                    (pro.pending > MONEY_EPS ? ' · ' + money(pro.pending) + ' still pending' : '')
+                    ' · ' + money(pro.received) + ' received' +
+                    (pro.pending > MONEY_EPS ? ' · ' + money(pro.pending) + ' still to be received' : '')
                   : 'No tax invoice raised yet');
 
               return (
@@ -161,6 +178,11 @@ export default function InvoiceListPage({
                         ← {d.sourceProformaNo}
                       </div>
                     )}
+                    {!isInvoice && linkedNos && (
+                      <div style={{ fontSize: 10, color: 'var(--muted)' }} title="Tax invoice raised from this proforma">
+                        → {linkedNos}
+                      </div>
+                    )}
                   </td>
                   <td>{d.clientName || ''}</td>
                   <td style={{ fontSize: 11, color: 'var(--muted)' }}>{d.clientGstin || '-'}</td>
@@ -171,19 +193,29 @@ export default function InvoiceListPage({
                     {d.subType && <span style={{ color: 'var(--muted)', fontSize: 11 }}>({d.subType})</span>}
                   </td>
                   <td><strong>{money(d.totalAmount)}</strong></td>
-                  <td style={{ color: pending > MONEY_EPS ? '#991B1B' : 'var(--muted)', fontWeight: pending > MONEY_EPS ? 600 : 400 }}>
+                  <td
+                    style={{ color: pending > MONEY_EPS ? '#991B1B' : 'var(--muted)', fontWeight: pending > MONEY_EPS ? 600 : 400 }}
+                    title={pending > MONEY_EPS ? money(pending) + ' still to be received' : 'Fully received'}
+                  >
                     {money(pending)}
                   </td>
                   <td><span className={'badge ' + badge.cls} title={statusTitle}>{badge.label}</span></td>
                   {!isInvoice && <td>{fmtDate(d.dueDate || d.invoiceDate)}</td>}
+                  <td
+                    style={{ fontSize: 12 }}
+                    title={(d.createdByEmail || '') +
+                      (d.updatedBy && d.updatedBy !== d.createdBy ? ' · last edited by ' + d.updatedBy : '')}
+                  >
+                    {d.createdBy || '—'}
+                  </td>
                   <td>
                     <div className="actions-cell">
                       {!isInvoice && (
-                        pending > MONEY_EPS ? (
+                        pro.unbilled > MONEY_EPS ? (
                           <button
                             className="icon-btn" style={{ background: '#DBEAFE', color: '#1E40AF' }}
                             onClick={() => onConvert(d.id)}
-                            title={'Open a tax invoice for ' + money(pending) + ' pending on this proforma'}
+                            title={'Raise a tax invoice for ' + money(pro.unbilled) + ' not yet invoiced on this proforma'}
                           >
                             🔄 {pro.invoiced > MONEY_EPS ? 'Convert Balance' : 'Convert'}
                           </button>
@@ -193,6 +225,8 @@ export default function InvoiceListPage({
                           </span>
                         )
                       )}
+                      <button className="icon-btn" style={{ background: '#EDE9FE', color: '#5B21B6' }}
+                        onClick={() => onPreview(d.id)} title="Preview before downloading">👁 Preview</button>
                       <button className="icon-btn pdf" onClick={() => onDownload(d.id)} title="Download Word document">📥 Word</button>
                       <button className="icon-btn pdf" onClick={() => onDownloadPdf(d.id)} title="Download PDF document">📄 PDF</button>
                       <button className="icon-btn edit" onClick={() => onEdit(d.id)} title={isEditingRow ? 'Close editor' : 'Edit'}>✏️</button>

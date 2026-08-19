@@ -196,7 +196,8 @@ function createRenderer(doc) {
 const cellOf = (paras, opts) => ({ paras, ...(opts || {}) });
 const para = (runs, opts) => ({ runs, ...(opts || {}) });
 
-export async function generatePdf(d, company) {
+/** Render the document — shared by the download and the on-screen preview. */
+function buildPdfDocument(d, company) {
   if (!d) throw new Error('Document not found');
   const isDubai = d.branch === 'dubai';
   const co = company[d.branch] || company.pune;
@@ -205,10 +206,27 @@ export async function generatePdf(d, company) {
 
   if (isDubai) buildDubaiPdf(doc, d, co, bank);
   else buildIndiaPdf(doc, d, co, bank);
+  return doc;
+}
 
+export async function generatePdf(d, company) {
+  const doc = buildPdfDocument(d, company);
   const fname = buildFilename(d, 'pdf');
   doc.save(fname);
   return fname;
+}
+
+/**
+ * The exact same PDF as the download, handed back as an object URL so it can be
+ * shown in an iframe before anyone commits to downloading it. The caller owns
+ * the URL and must revoke it.
+ */
+export async function generatePdfPreview(d, company) {
+  const doc = buildPdfDocument(d, company);
+  return {
+    url: URL.createObjectURL(doc.output('blob')),
+    filename: buildFilename(d, 'pdf')
+  };
 }
 
 /* ============================================================

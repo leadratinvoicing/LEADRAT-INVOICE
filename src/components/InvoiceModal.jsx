@@ -40,7 +40,7 @@ function distinctLegalName(legal, client) {
 }
 
 export default function InvoiceModal({
-  open, initialDocType, editingDoc, prefillDoc, convertFrom, onClose, onSave, inline
+  open, initialDocType, editingDoc, prefillDoc, convertFrom, onClose, onSave, onPreview, inline
 }) {
   const { clients, invoices, showToast, stateRef } = useApp();
   const panelRef = useRef(null);
@@ -247,8 +247,10 @@ export default function InvoiceModal({
     () => (convertFrom ? proformaState(convertFrom, invoices) : null),
     [convertFrom, invoices]
   );
-  const proformaPendingAfter = convertState ? Math.max(0, round2(convertState.pending - totalVal)) : 0;
-  const overInvoicing = !!convertState && totalVal > convertState.pending + MONEY_EPS;
+  // What the proforma still waits for drops by the money received here — raising
+  // the invoice alone does not make the payment arrive.
+  const proformaPendingAfter = convertState ? Math.max(0, round2(convertState.pending - receivedVal)) : 0;
+  const overInvoicing = !!convertState && totalVal > convertState.unbilled + MONEY_EPS;
   const money = (n) => fmtMoneyForRegion(n, regionOf(branch));
 
   const updateItem = (idx, field, value) =>
@@ -404,9 +406,21 @@ export default function InvoiceModal({
     }
   }
 
+  /** Render the document as it will be downloaded, without saving anything. */
+  function doPreview() {
+    const built = buildDocFromForm();
+    if (!built) return;
+    onPreview(built);
+  }
+
   const footer = (
     <>
       <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
+      {onPreview && (
+        <button className="btn btn-secondary" onClick={doPreview} disabled={saving} title="See the finished document before downloading it">
+          👁 Preview
+        </button>
+      )}
       <button className="btn btn-success" onClick={() => submit('word')} disabled={saving}>Save &amp; Word</button>
       <button className="btn btn-success" onClick={() => submit('pdf')} disabled={saving}>Save &amp; PDF</button>
       <button className="btn btn-primary" onClick={() => submit(null)} disabled={saving}>
@@ -433,22 +447,23 @@ export default function InvoiceModal({
             {convertState.invoiced > MONEY_EPS && (
               <span>Already invoiced: <strong>{money(convertState.invoiced)}</strong></span>
             )}
-            <span>Pending before this invoice: <strong>{money(convertState.pending)}</strong></span>
+            <span>Not yet invoiced: <strong>{money(convertState.unbilled)}</strong></span>
+            <span>Pending payment: <strong>{money(convertState.pending)}</strong></span>
             <span>This invoice: <strong>{money(totalVal)}</strong></span>
             <span>Received now: <strong>{money(receivedVal)}</strong></span>
             <span>Proforma pending after: <strong>{money(proformaPendingAfter)}</strong></span>
           </div>
           <div style={{ fontSize: 11, color: '#1E3A8A', marginTop: 8, lineHeight: 1.6 }}>
             Edit the items and the Payment Status below to match the transaction the client actually made.
-            {' '}{money(receivedVal)} moves into Total Revenue
-            {outstandingVal > MONEY_EPS ? ' and ' + money(outstandingVal) + ' stays as a balance under Due status' : ''}
+            {' '}{money(receivedVal)} moves into Total Revenue and comes off the proforma&apos;s pending amount
+            {outstandingVal > MONEY_EPS ? '; ' + money(outstandingVal) + ' stays as a balance under Due status' : ''}
             {proformaPendingAfter > MONEY_EPS
-              ? '; ' + money(proformaPendingAfter) + ' remains pending on the proforma and can be converted later'
-              : ''}.
+              ? '. ' + convertFrom.invoiceNo + ' keeps its own number and still shows ' + money(proformaPendingAfter) + ' pending'
+              : '. ' + convertFrom.invoiceNo + ' is then settled in full'}.
           </div>
           {overInvoicing && (
             <div style={{ fontSize: 11, color: '#92400E', background: '#FEF3C7', borderRadius: 6, padding: '6px 10px', marginTop: 8 }}>
-              ⚠ This invoice ({money(totalVal)}) is larger than the amount still pending on the proforma ({money(convertState.pending)}).
+              ⚠ This invoice ({money(totalVal)}) is larger than the amount still to be invoiced on the proforma ({money(convertState.unbilled)}).
             </div>
           )}
         </div>

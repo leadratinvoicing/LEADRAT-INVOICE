@@ -28,6 +28,7 @@ import ClientBulkModal from './components/ClientBulkModal';
 import UserModal from './components/UserModal';
 import UserDetailsModal from './components/UserDetailsModal';
 import TdsModal from './components/TdsModal';
+import DocumentPreviewModal from './components/DocumentPreviewModal';
 
 const NAV = [
   { page: 'dashboard', label: 'Dashboard', perm: 'dashboard' },
@@ -53,6 +54,7 @@ export default function MainApp() {
   const [page, setPage] = useState('dashboard');
   // Set when a dashboard card deep-links into a list with a filter pre-applied.
   const [invoiceStatusFilter, setInvoiceStatusFilter] = useState('');
+  const [docRegionFilter, setDocRegionFilter] = useState('');
   const [clientRegionFilter, setClientRegionFilter] = useState('');
 
   // `prefill` seeds a new document from an existing one and `convertFrom` is the
@@ -63,21 +65,30 @@ export default function MainApp() {
   const [userModal, setUserModal] = useState({ open: false, email: null });
   const [userDetails, setUserDetails] = useState({ open: false, email: null });
   const [tdsOpen, setTdsOpen] = useState(false);
+  // `doc` may be an unsaved draft from the form; `sourceId` is set when the
+  // preview was opened from a list row, so Edit knows what to reopen.
+  const [preview, setPreview] = useState({ open: false, doc: null, sourceId: null });
   const [pendingImport, setPendingImport] = useState(null);
 
   const isAdmin = currentUser && currentUser.role === 'admin';
   const perms = (currentUser && currentUser.permissions) || {};
 
   /* ---------------- NAVIGATION ---------------- */
-  const navigate = useCallback(async (next, filter) => {
+  /**
+   * `filter` is a status on the document lists and a region on the clients page;
+   * `region` narrows a document list to India (Pune + Bengaluru) or Dubai, so a
+   * dashboard card opened from the Dubai tab lands on Dubai documents only.
+   */
+  const navigate = useCallback(async (next, filter, region) => {
     if (!userCanAccess(next)) {
       showToast('You do not have permission to access this section', 'error');
       return;
     }
     setPage(next);
-    // `filter` means a status on the invoice list and a region on the clients page.
-    if (next === 'invoices') setInvoiceStatusFilter(filter || '');
-    else if (next === 'clients') setClientRegionFilter(filter || '');
+    if (next === 'invoices' || next === 'proforma') {
+      setInvoiceStatusFilter(next === 'invoices' ? (filter || '') : '');
+      setDocRegionFilter(region || '');
+    } else if (next === 'clients') setClientRegionFilter(filter || '');
     // Refresh shared data so this tab sees anything created in other sessions.
     try {
       if (next === 'users') await reloadUsers();
@@ -152,6 +163,36 @@ export default function MainApp() {
   const downloadInvoice = (id) => downloadDocument(id, 'word');
   const downloadInvoicePdf = (id) => downloadDocument(id, 'pdf');
 
+  /** Preview a saved document straight from its list row. */
+  function previewDocument(id) {
+    const d = stateRef.current.invoices.find((x) => x.id === id);
+    if (!d) return showToast('Document not found', 'error');
+    setPreview({ open: true, doc: d, sourceId: id });
+  }
+
+  /** Preview an unsaved draft handed over by the invoice form. */
+  function previewDraft(draft) {
+    setPreview({ open: true, doc: draft, sourceId: null });
+  }
+
+  const closePreview = () => setPreview({ open: false, doc: null, sourceId: null });
+
+  /** Download the previewed document — it may not be saved yet, so use the object. */
+  async function downloadPreviewed(format) {
+    const d = preview.doc;
+    if (!d) return;
+    const label = format === 'pdf' ? 'PDF' : 'Word doc';
+    try {
+      const fname = format === 'pdf'
+        ? await generatePdf(d, stateRef.current.company)
+        : await generateDocx(d, stateRef.current.company);
+      showToast(label + ' downloaded: ' + fname);
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to generate ' + label + ': ' + (err.message || err), 'error');
+    }
+  }
+
   function exportToExcel(docType) {
     const list = stateRef.current.invoices.filter((d) => d.docType === docType);
     if (list.length === 0) return showToast('No data to export', 'warn');
@@ -168,6 +209,17 @@ export default function MainApp() {
     if (isNew) d.id = uid();
     const existing = latest.find((x) => x.id === d.id);
     d.createdAt = existing ? (existing.createdAt || new Date().toISOString()) : new Date().toISOString();
+
+    // Who raised the document, and who touched it last — the list shows the author.
+    const me = currentUser || {};
+    if (existing) {
+      d.createdBy = existing.createdBy || '';
+      d.createdByEmail = existing.createdByEmail || '';
+    } else {
+      d.createdBy = me.name || me.email || '';
+      d.createdByEmail = me.email || '';
+    }
+    d.updatedBy = me.name || me.email || '';
 
     // === DUPLICATE PROTECTION ===
     const clash = latest.find((x) => x.invoiceNo === d.invoiceNo && x.id !== d.id);
@@ -267,11 +319,13 @@ export default function MainApp() {
     if (reconciled) {
       const region = regionOf(d.branch);
       const pending = reconciled.state.pending;
+      // The new tax invoice belongs to the Invoices section — go show it there.
+      if (isNew && userCanAccess('invoices')) navigate('invoices', '', regionOf(d.branch));
       showToast('\u2713 ' + d.invoiceNo + ' ' + (isNew ? 'created from ' : 'updated against ') + reconciled.proforma.invoiceNo +
         ' \u00B7 ' + fmtMoneyForRegion(receivedOf(d), region) + ' received' +
         (pending > MONEY_EPS
-          ? ' \u00B7 ' + fmtMoneyForRegion(pending, region) + ' still pending on the proforma'
-          : ' \u00B7 proforma fully invoiced'));
+          ? ' \u00B7 ' + fmtMoneyForRegion(pending, region) + ' still to be received on ' + reconciled.proforma.invoiceNo
+          : ' \u00B7 ' + reconciled.proforma.invoiceNo + ' settled in full'));
     } else {
       showToast('Saved successfully');
     }
@@ -306,10 +360,13 @@ export default function MainApp() {
     if (!p || p.docType !== 'proforma') return showToast('Proforma not found', 'error');
 
     const st = proformaState(p, latest);
-    if (st.pending <= MONEY_EPS) {
+    if (st.unbilled <= MONEY_EPS) {
       const last = st.linked[st.linked.length - 1] || null;
       return showToast('Proforma ' + p.invoiceNo + ' is already fully invoiced' +
-        (last ? ' (' + last.invoiceNo + ')' : '') + '. Edit or delete that tax invoice to redo it.', 'error');
+        (last ? ' (' + last.invoiceNo + ')' : '') +
+        (st.pending > MONEY_EPS
+          ? ' — record the balance received on that tax invoice instead.'
+          : '. Edit or delete that tax invoice to redo it.'), 'error');
     }
 
     const branch = p.branch || 'pune';
@@ -345,10 +402,10 @@ export default function MainApp() {
         ...deepClone(src),
         subType: 'Balance Pay',
         paymentDate: today,
-        totalAmount: st.pending,
-        netAmount: round2(st.pending / (1 + rate / 100))
+        totalAmount: st.unbilled,
+        netAmount: round2(st.unbilled / (1 + rate / 100))
       }];
-      draft.totalAmount = st.pending;
+      draft.totalAmount = st.unbilled;
     }
 
     setTdsOpen(false);
@@ -627,7 +684,9 @@ export default function MainApp() {
         tdsRate: 0,
         tdsAmount: 0,
         tdsStatus: isDubai ? 'not_applicable' : 'pending',
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        createdBy: (currentUser && (currentUser.name || currentUser.email)) || '',
+        createdByEmail: (currentUser && currentUser.email) || ''
       });
       added++;
     }
@@ -697,6 +756,7 @@ export default function MainApp() {
       editingDoc={editingDoc}
       onClose={closeEditor}
       onSave={saveInvoiceDoc}
+      onPreview={previewDraft}
     />
   ) : null;
 
@@ -743,7 +803,9 @@ export default function MainApp() {
             key={page}
             docType={page === 'invoices' ? 'invoice' : 'proforma'}
             initialStatus={page === 'invoices' ? invoiceStatusFilter : ''}
+            initialRegion={docRegionFilter}
             onNew={openInvoiceForm}
+            onPreview={previewDocument}
             onEdit={editInvoice}
             onDelete={deleteInvoice}
             onDownload={downloadInvoice}
@@ -798,6 +860,7 @@ export default function MainApp() {
         convertFrom={invoiceModal.convertFrom}
         onClose={closeEditor}
         onSave={saveInvoiceDoc}
+        onPreview={previewDraft}
       />
 
       <ClientModal
@@ -833,6 +896,21 @@ export default function MainApp() {
         onClose={() => setTdsOpen(false)}
         onSave={saveTdsChanges}
         onEditInvoice={editInvoice}
+      />
+
+      <DocumentPreviewModal
+        open={preview.open}
+        doc={preview.doc}
+        onClose={closePreview}
+        onEdit={() => {
+          const id = preview.sourceId;
+          closePreview();
+          // From a list row: reopen that document's editor. From the form: the
+          // form is still open underneath, so closing the preview is enough.
+          if (id) editInvoice(id);
+        }}
+        onDownloadWord={() => downloadPreviewed('word')}
+        onDownloadPdf={() => downloadPreviewed('pdf')}
       />
     </div>
   );
