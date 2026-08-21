@@ -1,4 +1,5 @@
 import { jsPDF } from 'jspdf';
+import { APTOS_NARROW_BOLD, APTOS_NARROW_REGULAR } from './fonts/aptosNarrow';
 import { DUBAI_LOGO_DATA_URI, LOGO_DATA_URI } from './logo';
 import { aedToWords, fmtDate, numberToWords } from './utils';
 import { buildFilename, fmtMoneyAed, fmtMoneyDocx, titleCase } from './docxShared';
@@ -15,7 +16,37 @@ import { buildFilename, fmtMoneyAed, fmtMoneyDocx, titleCase } from './docxShare
    (text + bold), and runs wrap on word boundaries inside the cell.
    ============================================================ */
 
-const FONT = 'helvetica';
+/* ---------- typeface ----------
+   Both documents are set in Aptos Narrow, the same face the Word build asks for
+   by name (docxShared.RUN_FONT). jsPDF ships only the 14 standard PDF fonts, so
+   the typeface has to be embedded — run "npm run embed-font" to compile the .ttf
+   files into src/fonts/aptosNarrow.js. Without them the layout is unchanged and
+   the text falls back to Helvetica. */
+const APTOS = 'AptosNarrow';
+const FALLBACK_FONT = 'helvetica';
+const hasEmbeddedAptos = () => typeof APTOS_NARROW_REGULAR === 'string' && APTOS_NARROW_REGULAR.length > 1000;
+
+// Which family the renderer draws with — set per document by registerFonts().
+let FONT = FALLBACK_FONT;
+
+/** Load Aptos Narrow into this document; falls back to Helvetica if unavailable. */
+function registerFonts(doc) {
+  FONT = FALLBACK_FONT;
+  if (!hasEmbeddedAptos()) return;
+  try {
+    doc.addFileToVFS('AptosNarrow-Regular.ttf', APTOS_NARROW_REGULAR);
+    doc.addFont('AptosNarrow-Regular.ttf', APTOS, 'normal');
+    const boldData = (typeof APTOS_NARROW_BOLD === 'string' && APTOS_NARROW_BOLD.length > 1000)
+      ? APTOS_NARROW_BOLD : APTOS_NARROW_REGULAR;
+    doc.addFileToVFS('AptosNarrow-Bold.ttf', boldData);
+    doc.addFont('AptosNarrow-Bold.ttf', APTOS, 'bold');
+    doc.setFont(APTOS, 'normal');
+    FONT = APTOS;
+  } catch (e) {
+    console.warn('[pdf] Could not embed Aptos Narrow, using Helvetica:', e && e.message ? e.message : e);
+    FONT = FALLBACK_FONT;
+  }
+}
 // A4 in points, 0.5" margins — matches the DXA page setup of the .docx.
 const PAGE = { w: 595.28, h: 841.89, margin: 36 };
 const CONTENT_W = PAGE.w - PAGE.margin * 2;
@@ -203,6 +234,7 @@ function buildPdfDocument(d, company) {
   const co = company[d.branch] || company.pune;
   const bank = isDubai ? (company.dubaiBank || company.bank) : company.bank;
   const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+  registerFonts(doc);
 
   if (isDubai) buildDubaiPdf(doc, d, co, bank);
   else buildIndiaPdf(doc, d, co, bank);
