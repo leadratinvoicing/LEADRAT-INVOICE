@@ -2,7 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../AppContext';
 import Modal from './Modal';
 import SearchableSelect from './SearchableSelect';
-import { BRANCHES, KNOWN_SUBTYPES, PAYMENT_MODES, SUBTYPE_OPTIONS, VALIDITY_OPTIONS } from '../constants';
+import {
+  BRANCH_GST_STATE_CODE, BRANCHES, KNOWN_SUBTYPES, NO_LICENSE_SUBTYPES,
+  PAYMENT_MODES, SUBTYPE_OPTIONS, VALIDITY_OPTIONS
+} from '../constants';
 import {
   dateToInput, fmtMoneyForRegion, MONEY_EPS, nextDocNumber, proformaState, receivedOf, regionOf, round2
 } from '../utils';
@@ -19,6 +22,18 @@ function blankItem() {
     totalAmount: '' // user-entered Total (incl. tax). Net is back-calculated.
   };
 }
+
+/**
+ * "Balance Pay" settles an amount already billed on an earlier invoice, so the
+ * licence count and validity belong to that invoice, not this line — both
+ * fields are locked and printed blank.
+ */
+function isBalanceOnly(subType) {
+  return NO_LICENSE_SUBTYPES.includes(subType);
+}
+
+/** Shared look for a field the form has taken out of the user's hands. */
+const lockedFieldStyle = { background: '#F3F4F6', cursor: 'not-allowed' };
 
 function adaptValidity(v) {
   if (!v) return '1 Year';
@@ -126,13 +141,14 @@ export default function InvoiceModal({
         if ((total == null || total === '') && d.totalAmount && (!Array.isArray(d.items) || d.items.length === 0)) {
           total = d.totalAmount;
         }
+        const st = isOthers ? 'Others' : (src.subType || 'New');
         return {
           description: src.description || 'CRM Application',
-          subType: isOthers ? 'Others' : (src.subType || 'New'),
+          subType: st,
           subTypeOther: isOthers ? src.subType : '',
           paymentDate: dateToInput(src.paymentDate) || '',
-          noOfLicense: src.noOfLicense || '',
-          validity: adaptValidity(src.validity),
+          noOfLicense: isBalanceOnly(st) ? '' : (src.noOfLicense || ''),
+          validity: isBalanceOnly(st) ? '' : adaptValidity(src.validity),
           totalAmount: total || ''
         };
       };
@@ -191,6 +207,22 @@ export default function InvoiceModal({
   useEffect(() => {
     if (gstApplicable === 'no') { setClientGstin(''); setClientLegalName(''); }
   }, [gstApplicable]);
+
+  /* ---------- GST Type follows the place of supply ----------
+     The first two digits of a GSTIN are the client's state code. Matching the
+     branch's own code (Pune 27 / Bengaluru 29) makes it an intra-state supply
+     billed as CGST + SGST; any other state is inter-state, billed as IGST.
+     Dubai is a VAT regime with no such split, so it is left untouched. */
+  const branchName = (BRANCHES.find((b) => b.value === branch) || {}).name || branch;
+  const branchStateCode = BRANCH_GST_STATE_CODE[branch] || '';
+  const gstinStateCode = clientGstin.trim().substring(0, 2);
+  const autoGstType = (!isDubai && gstApplicable !== 'no' && branchStateCode && gstinStateCode.length === 2)
+    ? (gstinStateCode === branchStateCode ? 'cgst_sgst' : 'igst')
+    : null;
+
+  useEffect(() => {
+    if (autoGstType) setGstType(autoGstType);
+  }, [autoGstType]);
 
   /**
    * Dubai has a single branch and a flat VAT @ 5% — no CGST/SGST split, no HSN,
@@ -254,7 +286,17 @@ export default function InvoiceModal({
   const money = (n) => fmtMoneyForRegion(n, regionOf(branch));
 
   const updateItem = (idx, field, value) =>
-    setItems((list) => list.map((it, i) => (i === idx ? { ...it, [field]: value } : it)));
+    setItems((list) => list.map((it, i) => {
+      if (i !== idx) return it;
+      const next = { ...it, [field]: value };
+      // Switching into "Balance Pay" clears the licence count and validity and
+      // locks both; switching back out restores a usable default validity.
+      if (field === 'subType') {
+        if (isBalanceOnly(value)) { next.noOfLicense = ''; next.validity = ''; }
+        else if (isBalanceOnly(it.subType)) { next.validity = next.validity || '1 Year'; }
+      }
+      return next;
+    }));
   const addItemRow = () => setItems((list) => [...list, blankItem()]);
   const removeItemRow = (idx) => setItems((list) => (list.length <= 1 ? list : list.filter((_, i) => i !== idx)));
 
@@ -264,17 +306,60 @@ export default function InvoiceModal({
     [clients]
   );
 
+  /** Copy a saved client's details into the Bill To fields. */
+  function fillFromClient(c) {
+    setClientName(c.name);
+    setClientAddr(c.address || '');
+    setClientGstin(c.gstin || '');
+    setClientLegalName(distinctLegalName(c.legalName, c.name));
+    if (c.gstin) setGstApplicable('yes');
+  }
+
   function onClientSelect(id) {
     setClientId(id);
     if (!id) return;
     const c = clients.find((x) => x.id === id);
-    if (c) {
-      setClientName(c.name);
-      setClientAddr(c.address || '');
-      setClientGstin(c.gstin || '');
-      setClientLegalName(distinctLegalName(c.legalName, c.name));
+    if (c) fillFromClient(c);
+  }
+
+  /**
+   * Typing the Client Name is a second way into the same record: as soon as the
+   * text matches a saved client the rest of Bill To is filled in from the
+   * database, and a name that matches nothing is left alone to be typed out and
+   * saved as a new client. Names are matched case-insensitively.
+   */
+  function onClientNameTyped(raw) {
+    setClientName(raw);
+    setBadField(null);
+    const key = raw.trim().toLowerCase();
+    const match = key ? clients.find((c) => (c.name || '').trim().toLowerCase() === key) : null;
+    if (match) {
+      if (match.id !== clientId) {
+        setClientId(match.id);
+        fillFromClient(match);
+      }
+    } else if (clientId) {
+      // The name no longer belongs to the linked client — treat it as new so
+      // saving creates the record rather than renaming an existing one.
+      setClientId('');
     }
   }
+
+  // Suggestions for the Client Name box, so the saved records are reachable by
+  // typing as well as through the picker above.
+  const clientNameList = useMemo(
+    () => Array.from(new Set(clients.map((c) => (c.name || '').trim()).filter(Boolean))).sort(
+      (a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })
+    ),
+    [clients]
+  );
+
+  /** The saved record behind the current name, when there is one. */
+  const linkedClient = useMemo(() => {
+    const key = clientName.trim().toLowerCase();
+    if (!key) return null;
+    return clients.find((c) => c.id === clientId) || clients.find((c) => (c.name || '').trim().toLowerCase() === key) || null;
+  }, [clients, clientId, clientName]);
 
   function fail(field, msg) {
     setBadField(field);
@@ -295,8 +380,11 @@ export default function InvoiceModal({
       if (!it.subType) { showToast('Item ' + n + ': sub-type is required', 'error'); return null; }
       if (it.subType === 'Others' && !String(it.subTypeOther || '').trim()) { showToast('Item ' + n + ': please specify the custom sub-type', 'error'); return null; }
       if (!it.paymentDate) { showToast('Item ' + n + ': payment date is required', 'error'); return null; }
-      if (!String(it.noOfLicense || '').trim()) { showToast('Item ' + n + ': no of license is required', 'error'); return null; }
-      if (!it.validity) { showToast('Item ' + n + ': validity is required', 'error'); return null; }
+      // Balance Pay carries neither — both print blank.
+      if (!isBalanceOnly(it.subType)) {
+        if (!String(it.noOfLicense || '').trim()) { showToast('Item ' + n + ': no of license is required', 'error'); return null; }
+        if (!it.validity) { showToast('Item ' + n + ': validity is required', 'error'); return null; }
+      }
       const amt = parseFloat(it.totalAmount);
       if (!amt || amt <= 0) { showToast('Item ' + n + ': total amount must be greater than zero', 'error'); return null; }
     }
@@ -331,6 +419,7 @@ export default function InvoiceModal({
     const docRate = parseFloat(gstRate) || (isDubai ? 5 : 18);
     const finalItems = items.map((it) => {
       let st = it.subType;
+      const balanceOnly = isBalanceOnly(it.subType);
       if (st === 'Others') st = (it.subTypeOther || '').trim() || 'Others';
       const total = parseFloat(it.totalAmount) || 0;
       const net = total > 0 ? Math.round((total / (1 + docRate / 100)) * 100) / 100 : 0;
@@ -340,8 +429,8 @@ export default function InvoiceModal({
         subType: st,
         fullDescription: desc + ' ' + st,
         paymentDate: it.paymentDate,
-        noOfLicense: String(it.noOfLicense || '').trim(),
-        validity: it.validity,
+        noOfLicense: balanceOnly ? '' : String(it.noOfLicense || '').trim(),
+        validity: balanceOnly ? '' : it.validity,
         totalAmount: total,
         netAmount: net
       };
@@ -519,7 +608,19 @@ export default function InvoiceModal({
         <div className="form-group form-grid-full">
           <label className="form-label">Client Name <span className="req">*</span></label>
           <input ref={bind('frmClientName')} type="text" className={cls('frmClientName')}
-            value={clientName} onChange={(e) => { setClientName(e.target.value); setBadField(null); }} />
+            list="clientNameSuggestions" autoComplete="off"
+            placeholder="Start typing — saved clients fill themselves in"
+            value={clientName} onChange={(e) => onClientNameTyped(e.target.value)} />
+          <datalist id="clientNameSuggestions">
+            {clientNameList.map((n) => <option key={n} value={n} />)}
+          </datalist>
+          <div className="password-hint">
+            {linkedClient
+              ? '✓ Matched saved client — address and ' + taxIdLabel + ' filled in from the database. Any edit below is saved back to this client.'
+              : clientName.trim()
+              ? '✦ New client — the details you enter here are saved to the database when the document is saved.'
+              : 'Type a saved client’s name to pull its details, or enter a new one.'}
+          </div>
         </div>
         <div className="form-group form-grid-full">
           <label className="form-label">Address <span className="req">*</span></label>
@@ -620,15 +721,27 @@ export default function InvoiceModal({
                 <input type="date" className="form-input" value={it.paymentDate || ''} onChange={(e) => updateItem(idx, 'paymentDate', e.target.value)} />
               </div>
               <div className="form-group">
-                <label className="form-label">No of License <span className="req">*</span></label>
-                <input type="text" className="form-input" placeholder="e.g., 30 or 50 Users"
-                  value={it.noOfLicense || ''} onChange={(e) => updateItem(idx, 'noOfLicense', e.target.value)} />
+                <label className="form-label">No of License {!isBalanceOnly(it.subType) && <span className="req">*</span>}</label>
+                <input type="text" className="form-input"
+                  placeholder={isBalanceOnly(it.subType) ? '' : 'e.g., 30 or 50 Users'}
+                  value={isBalanceOnly(it.subType) ? '' : (it.noOfLicense || '')}
+                  disabled={isBalanceOnly(it.subType)}
+                  style={isBalanceOnly(it.subType) ? lockedFieldStyle : undefined}
+                  onChange={(e) => updateItem(idx, 'noOfLicense', e.target.value)} />
+                {isBalanceOnly(it.subType) && <div className="password-hint">🔒 Blank on a {it.subType} line</div>}
               </div>
               <div className="form-group">
-                <label className="form-label">Validity <span className="req">*</span></label>
-                <select className="form-input" value={it.validity} onChange={(e) => updateItem(idx, 'validity', e.target.value)}>
-                  {VALIDITY_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
-                </select>
+                <label className="form-label">Validity {!isBalanceOnly(it.subType) && <span className="req">*</span>}</label>
+                {isBalanceOnly(it.subType) ? (
+                  <>
+                    <input type="text" className="form-input" value="" disabled readOnly style={lockedFieldStyle} />
+                    <div className="password-hint">🔒 Blank on a {it.subType} line</div>
+                  </>
+                ) : (
+                  <select className="form-input" value={it.validity} onChange={(e) => updateItem(idx, 'validity', e.target.value)}>
+                    {VALIDITY_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
+                  </select>
+                )}
               </div>
               <div className="form-group">
                 <label className="form-label">
@@ -655,6 +768,14 @@ export default function InvoiceModal({
                 <option value="cgst_sgst">CGST + SGST (Intra-state)</option>
                 <option value="igst">IGST (Inter-state)</option>
               </select>
+              <div className="password-hint">
+                {autoGstType
+                  ? 'Auto-selected: GSTIN starts ' + gstinStateCode + ' and ' + branchName + ' is ' + branchStateCode
+                    + ' → ' + (autoGstType === 'cgst_sgst' ? 'Intra-state (CGST + SGST)' : 'Inter-state (IGST)')
+                    + '. Change it here if the place of supply differs.'
+                  : 'Set automatically from the client GSTIN once its first two digits are entered ('
+                    + branchName + ' = ' + (branchStateCode || '—') + ' → Intra-state).'}
+              </div>
             </div>
           </div>
         </>

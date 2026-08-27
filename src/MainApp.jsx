@@ -241,14 +241,25 @@ export default function MainApp() {
       showToast('Invoice number was bumped to ' + d.invoiceNo + ' to prevent a duplicate.', 'warn');
     }
 
-    // If the client name isn't in the DB yet, link or create it.
+    // The Bill To block is the client record: link it by id or by name, create
+    // it when the name is new, and write any details typed here back so the
+    // database stays the single source the next invoice fills itself from.
     let clientList = stateRef.current.clients;
-    if (!d.clientId && d.clientName) {
-      const found = clientList.find((c) => (c.name || '').toLowerCase() === d.clientName.toLowerCase());
+    if (d.clientName) {
+      const byName = (c) => (c.name || '').trim().toLowerCase() === d.clientName.trim().toLowerCase();
+      const found = (d.clientId && clientList.find((c) => c.id === d.clientId)) || clientList.find(byName);
       if (found) {
         d.clientId = found.id;
-        if (!found.legalName && d.clientLegalName) {
-          clientList = clientList.map((c) => (c.id === found.id ? { ...c, legalName: d.clientLegalName } : c));
+        // Only fields the form actually carries are considered, and a blank is
+        // never allowed to wipe a detail already on record.
+        const patch = {};
+        if (d.clientName.trim() && d.clientName.trim() !== (found.name || '')) patch.name = d.clientName.trim();
+        if (d.clientAddress && d.clientAddress !== (found.address || '')) patch.address = d.clientAddress;
+        if (d.clientGstin && d.clientGstin !== (found.gstin || '')) patch.gstin = d.clientGstin;
+        if (d.clientLegalName && d.clientLegalName !== (found.legalName || '')) patch.legalName = d.clientLegalName;
+        if (Object.keys(patch).length) {
+          patch.updatedAt = new Date().toISOString();
+          clientList = clientList.map((c) => (c.id === found.id ? { ...c, ...patch } : c));
           await saveClients(clientList);
         }
       } else {

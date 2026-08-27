@@ -37,12 +37,12 @@ export const VALIDITY_OPTIONS = ['1 Month', '3 Months', '6 Months', '1 Year', 'C
 
 export const SUBTYPE_OPTIONS = [
   'New', 'Renewal', 'Balance Pay', 'Additional User', 'Trial',
-  'Engageto', 'Engageto Recharge', 'Customization Charges', 'Set-Up Fee', 'Instalment', 'Others'
+  'Engageto', 'Engageto Recharge', 'Engageto Renewal', 'Customization Charges', 'Set-Up Fee', 'Instalment', 'Others'
 ];
 
 export const KNOWN_SUBTYPES = [
   'New', 'Renewal', 'Balance Pay', 'Additional User', 'Trial',
-  'Engageto', 'Engageto Recharge', 'Customization Charges', 'Set-Up Fee', 'Instalment'
+  'Engageto', 'Engageto Recharge', 'Engageto Renewal', 'Customization Charges', 'Set-Up Fee', 'Instalment'
 ];
 
 export const PAYMENT_MODES = [
@@ -248,3 +248,16 @@ export const NUMBER_SERIES = [
 ];
 
 export const DEFAULT_ADMIN_PASS = 'Beunited@12';
+
+/**
+ * GST state code of the branch raising the invoice. A client GSTIN starting
+ * with the same two digits is an intra-state supply (CGST + SGST); anything
+ * else is inter-state (IGST). Dubai has no GST, so it is absent here.
+ */
+export const BRANCH_GST_STATE_CODE = {
+  pune: '27',      // Maharashtra
+  bengaluru: '29'  // Karnataka
+};
+
+/** Sub-types billed against an earlier invoice — no licence count or validity of their own. */
+export const NO_LICENSE_SUBTYPES = ['Balance Pay'];
