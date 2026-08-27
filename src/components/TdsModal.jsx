@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useApp } from '../AppContext';
 import Modal from './Modal';
-import { dateToInput, fmtDate, fmtMoneyR } from '../utils';
+import { dateToInput, fmtDate, fmtMoneyR, visibleDocsFor } from '../utils';
 
 export default function TdsModal({ open, onClose, onSave, onEditInvoice }) {
-  const { invoices } = useApp();
+  const { invoices, currentUser } = useApp();
   const [pending, setPending] = useState({});
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -14,7 +14,7 @@ export default function TdsModal({ open, onClose, onSave, onEditInvoice }) {
   useEffect(() => { if (open) { setPending({}); setSearch(''); setStatusFilter(''); setRateFilter(''); } }, [open]);
 
   // Tax invoices only — proformas have no TDS.
-  const baseRows = useMemo(() => invoices
+  const baseRows = useMemo(() => visibleDocsFor(invoices, currentUser)
     .filter((d) => d.docType === 'invoice')
     .map((d) => {
       const rate = +d.tdsRate || 0;
@@ -30,7 +30,7 @@ export default function TdsModal({ open, onClose, onSave, onEditInvoice }) {
         tdsStatus: d.tdsStatus || 'pending',
         tdsReceivedDate: d.tdsReceivedDate || ''
       };
-    }), [invoices]);
+    }), [invoices, currentUser]);
 
   const allRows = baseRows.map((r) => (pending[r.id] ? { ...r, ...pending[r.id] } : r));
 

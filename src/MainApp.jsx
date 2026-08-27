@@ -13,7 +13,7 @@ import { NUMBER_SERIES } from './constants';
 import {
   deepClone, fmtMoneyForRegion, formatExcelDate, invoicesForProforma, isValidEmail, MONEY_EPS,
   nextAvailableNumber, nextDocNumber, pad, proformaState, receivedOf, regionOf, round2,
-  seriesConfig, seriesKeyFor, uid
+  sameEmail, seriesConfig, seriesKeyFor, uid, visibleDocsFor
 } from './utils';
 
 import Dashboard from './components/Dashboard';
@@ -26,6 +26,9 @@ import InvoiceModal from './components/InvoiceModal';
 import ClientModal from './components/ClientModal';
 import ClientBulkModal from './components/ClientBulkModal';
 import UserModal from './components/UserModal';
+import CreateUserModal from './components/CreateUserModal';
+import AssignModal from './components/AssignModal';
+import ForcePasswordModal from './components/ForcePasswordModal';
 import UserDetailsModal from './components/UserDetailsModal';
 import TdsModal from './components/TdsModal';
 import DocumentPreviewModal from './components/DocumentPreviewModal';
@@ -46,9 +49,9 @@ export default function MainApp() {
   const {
     currentUser, users, stateRef,
     saveInvoices, saveClients, saveUsers, saveNumbering,
-    reloadInvoices, reloadClients, reloadUsers,
+    reloadInvoices, reloadClients, reloadUsers, reloadRoles,
     buildBackupPayload, restoreBackup,
-    clearSession, userCanAccess, showToast
+    clearSession, userCanAccess, refreshSessionUser, showToast
   } = useApp();
 
   const [page, setPage] = useState('dashboard');
@@ -63,6 +66,8 @@ export default function MainApp() {
   const [clientModal, setClientModal] = useState({ open: false, editing: null });
   const [clientBulk, setClientBulk] = useState({ open: false, rows: [] });
   const [userModal, setUserModal] = useState({ open: false, email: null });
+  const [createUserOpen, setCreateUserOpen] = useState(false);
+  const [assignModal, setAssignModal] = useState({ open: false, id: null });
   const [userDetails, setUserDetails] = useState({ open: false, email: null });
   const [tdsOpen, setTdsOpen] = useState(false);
   // `doc` may be an unsaved draft from the form; `sourceId` is set when the
@@ -91,12 +96,12 @@ export default function MainApp() {
     } else if (next === 'clients') setClientRegionFilter(filter || '');
     // Refresh shared data so this tab sees anything created in other sessions.
     try {
-      if (next === 'users') await reloadUsers();
-      else if (next === 'dashboard') await Promise.all([reloadUsers(), reloadInvoices(), reloadClients()]);
+      if (next === 'users') await Promise.all([reloadUsers(), reloadRoles()]);
+      else if (next === 'dashboard') await Promise.all([reloadUsers(), reloadRoles(), reloadInvoices(), reloadClients()]);
       else if (next === 'invoices' || next === 'proforma') await Promise.all([reloadInvoices(), reloadClients()]);
       else if (next === 'clients') await reloadClients();
     } catch (e) { console.warn('Refresh failed', e); }
-  }, [userCanAccess, showToast, reloadUsers, reloadInvoices, reloadClients]);
+  }, [userCanAccess, showToast, reloadUsers, reloadRoles, reloadInvoices, reloadClients]);
 
   async function doSignOut() {
     // Drop the local session first — the auth observer restores an admin session
@@ -194,7 +199,7 @@ export default function MainApp() {
   }
 
   function exportToExcel(docType) {
-    const list = stateRef.current.invoices.filter((d) => d.docType === docType);
+    const list = visibleDocsFor(stateRef.current.invoices, currentUser).filter((d) => d.docType === docType);
     if (list.length === 0) return showToast('No data to export', 'warn');
     exportInvoicesToExcel(list, docType, stateRef.current.invoices);
     showToast('Exported');
@@ -215,9 +220,17 @@ export default function MainApp() {
     if (existing) {
       d.createdBy = existing.createdBy || '';
       d.createdByEmail = existing.createdByEmail || '';
+      // Assignment lives outside the form, so an edit must carry it across —
+      // otherwise saving a document would silently unassign it.
+      d.assignedTo = existing.assignedTo || '';
+      d.assignedToName = existing.assignedToName || '';
+      d.assignedAt = existing.assignedAt || '';
+      d.assignedBy = existing.assignedBy || '';
+      d.assignmentNote = existing.assignmentNote || '';
     } else {
       d.createdBy = me.name || me.email || '';
       d.createdByEmail = me.email || '';
+      d.assignedTo = d.assignedTo || '';
     }
     d.updatedBy = me.name || me.email || '';
 
@@ -711,11 +724,74 @@ export default function MainApp() {
     navigate('invoices');
   }
 
+  /* ---------------- ASSIGNMENT ---------------- */
+  const openAssign = (id) => setAssignModal({ open: true, id });
+
+  /**
+   * Hand a document to a colleague. The assignee sees it even on the narrow data
+   * scope, so this is how work reaches someone who did not raise it.
+   */
+  async function assignDocument(id, patch) {
+    const latest = await reloadInvoices();
+    const target = latest.find((x) => x.id === id);
+    if (!target) {
+      setAssignModal({ open: false, id: null });
+      return showToast('That document no longer exists', 'error');
+    }
+    const me = currentUser || {};
+    const stamped = {
+      ...target,
+      ...patch,
+      assignedAt: patch.assignedTo ? new Date().toISOString() : '',
+      assignedBy: patch.assignedTo ? (me.name || me.email || '') : '',
+      updatedAt: new Date().toISOString()
+    };
+    await saveInvoices(latest.map((x) => (x.id === id ? stamped : x)));
+    setAssignModal({ open: false, id: null });
+    showToast(patch.assignedTo
+      ? (target.invoiceNo || 'Document') + ' assigned to ' + (patch.assignedToName || patch.assignedTo)
+      : (target.invoiceNo || 'Document') + ' unassigned');
+  }
+
   /* ---------------- USERS ---------------- */
   async function saveUserEdit(updated) {
     await saveUsers(stateRef.current.users.map((u) => (u.email === updated.email ? updated : u)));
     setUserModal({ open: false, email: null });
+    // The edited user may be the one signed in — re-resolve their session so a
+    // permission or scope change takes effect without a sign-out.
+    if (sameEmail(updated.email, currentUser && currentUser.email)) refreshSessionUser();
     showToast('User updated successfully');
+  }
+
+  /**
+   * Admin-created accounts. The Firebase login is made by CreateUserModal
+   * against a secondary app; all that is left here is storing the profile.
+   */
+  async function createUserProfile(profile, initialPassword) {
+    const latest = await reloadUsers();
+    if (latest.some((u) => sameEmail(u.email, profile.email))) {
+      return showToast('A profile for ' + profile.email + ' already exists', 'error');
+    }
+    await saveUsers([...latest, profile]);
+    setCreateUserOpen(false);
+    showToast(profile.name + ' created · username ' + profile.email + ' · password ' + initialPassword);
+    // The password is shown once and never stored, so make it hard to miss.
+    alert(
+      'Account created.\n\n' +
+      'Username: ' + profile.email + '\n' +
+      'Password: ' + initialPassword + '\n\n' +
+      (profile.mustChangePassword ? 'They will be asked to choose a new password at first sign-in.\n\n' : '') +
+      'This password is not stored anywhere — copy it now and share it with them directly.'
+    );
+  }
+
+  /** Clear the flag once the user has chosen their own password. */
+  async function completeForcedPasswordChange() {
+    const latest = await reloadUsers();
+    await saveUsers(latest.map((u) => (sameEmail(u.email, currentUser && currentUser.email)
+      ? { ...u, mustChangePassword: false, passwordChangedAt: new Date().toISOString() }
+      : u)));
+    refreshSessionUser();
   }
 
   async function deleteUser(email) {
@@ -749,6 +825,11 @@ export default function MainApp() {
 
   const selectedUser = userModal.email ? users.find((u) => u.email === userModal.email) : null;
   const detailsUser = userDetails.email ? users.find((u) => u.email === userDetails.email) : null;
+  const assignTarget = assignModal.id ? stateRef.current.invoices.find((x) => x.id === assignModal.id) : null;
+  // An admin-set temporary password gates the app until the user picks their own.
+  // Google accounts have no password to change, so they are never held here.
+  const mustChangePassword = !!currentUser && currentUser.role !== 'admin' &&
+    !!currentUser.mustChangePassword && currentUser.authProvider !== 'google';
 
   // Editing a document from its list row expands the form under that row; every
   // other entry point (new document, TDS manager) still uses the dialog.
@@ -823,6 +904,8 @@ export default function MainApp() {
             onDownloadPdf={downloadInvoicePdf}
             onExport={exportToExcel}
             onConvert={startProformaConversion}
+            onAssign={openAssign}
+            canAssign={isAdmin || !!(perms[page === 'invoices' ? 'invoices' : 'proforma'] || {}).assign}
             editingId={listHostsEditor ? editingDoc.id : null}
             editor={inlineEditor}
           />
@@ -858,6 +941,7 @@ export default function MainApp() {
             onView={(email) => setUserDetails({ open: true, email })}
             onEdit={(email) => setUserModal({ open: true, email })}
             onDelete={deleteUser}
+            onCreate={() => setCreateUserOpen(true)}
           />
         )}
         {page === 'settings' && <SettingsPage />}
@@ -893,6 +977,25 @@ export default function MainApp() {
         user={selectedUser}
         onClose={() => setUserModal({ open: false, email: null })}
         onSave={saveUserEdit}
+      />
+
+      <CreateUserModal
+        open={createUserOpen}
+        onClose={() => setCreateUserOpen(false)}
+        onCreated={createUserProfile}
+      />
+
+      <AssignModal
+        open={assignModal.open && !!assignTarget}
+        doc={assignTarget}
+        onClose={() => setAssignModal({ open: false, id: null })}
+        onAssign={assignDocument}
+      />
+
+      <ForcePasswordModal
+        open={mustChangePassword}
+        onDone={completeForcedPasswordChange}
+        onSignOut={doSignOut}
       />
 
       <UserDetailsModal

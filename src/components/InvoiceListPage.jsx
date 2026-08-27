@@ -2,8 +2,8 @@ import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useApp } from '../AppContext';
 import { BRANCHES } from '../constants';
 import {
-  branchLabel, filterByDateRange, filterByUserBranch, fmtDate, fmtMoneyForRegion, MONEY_EPS,
-  parseDateValue, pendingOf, proformaState, receivedOf, regionOf, statusBadgeOf
+  assigneeLabel, branchLabel, dataScopeOf, filterByDateRange, fmtDate, fmtMoneyForRegion, MONEY_EPS,
+  parseDateValue, pendingOf, proformaState, receivedOf, regionOf, sameEmail, statusBadgeOf, visibleDocsFor
 } from '../utils';
 import DateRangeFilter from './DateRangeFilter';
 import SortableTh, { sortRows, useSort } from './SortableTh';
@@ -19,18 +19,22 @@ const BRANCH_FILTERS = [
 
 export default function InvoiceListPage({
   docType, initialStatus, initialRegion, onNew, onEdit, onDelete, onPreview, onDownload, onDownloadPdf,
-  onExport, onConvert, editingId, editor
+  onExport, onConvert, onAssign, canAssign, editingId, editor
 }) {
-  const { invoices, currentUser } = useApp();
+  const { invoices, users, currentUser } = useApp();
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState(initialStatus || '');
   const [branch, setBranch] = useState(initialRegion || '');
   // Invoice-date window — both bounds optional, empty means all time.
   const [range, setRange] = useState({ from: '', to: '' });
+  // 'mine' / 'assigned' narrow further inside whatever the user can already see.
+  const [ownership, setOwnership] = useState('');
   // Newest first by default, matching how the list behaved before sorting existed.
   const { sort, toggle, setDir } = useSort('invoiceDate', 'desc');
 
   const isInvoice = docType === 'invoice';
+  // Users on the narrow scope are told why the list is shorter than they expect.
+  const narrowScope = dataScopeOf(currentUser) === 'own';
 
   // Pending amounts and payment states are derived from the whole document set —
   // a proforma's pending amount depends on the tax invoices raised from it.
@@ -45,8 +49,9 @@ export default function InvoiceListPage({
     pending: (d) => pendingOf(d, invoices),
     status: (d) => statusBadgeOf(d, invoices).label,
     createdBy: (d) => d.createdBy || '',
+    assignedTo: (d) => assigneeLabel(d, users) || '',
     dueDate: (d) => parseDateValue(d.dueDate || d.invoiceDate)
-  }), [invoices]);
+  }), [invoices, users]);
 
   const columns = [
     { key: 'invoiceNo', label: 'Invoice No' },
@@ -61,6 +66,7 @@ export default function InvoiceListPage({
   ];
   if (!isInvoice) columns.push({ key: 'dueDate', label: 'Due Date' });
   columns.push({ key: 'createdBy', label: 'Created By' });
+  columns.push({ key: 'assignedTo', label: 'Assigned To' });
 
   // Dashboard cards deep-link here with a status and/or a region pre-applied.
   useEffect(() => { setStatus(initialStatus || ''); }, [initialStatus]);
@@ -68,7 +74,7 @@ export default function InvoiceListPage({
 
   const s = search.toLowerCase();
   // Start from the documents this user is allowed to see (based on branchAccess)
-  let list = filterByUserBranch(invoices, currentUser).filter((d) => d.docType === docType);
+  let list = visibleDocsFor(invoices, currentUser).filter((d) => d.docType === docType);
   if (s) {
     list = list.filter((d) =>
       (d.invoiceNo || '').toLowerCase().includes(s) ||
@@ -89,6 +95,9 @@ export default function InvoiceListPage({
   // 'india' is the two Indian branches together; anything else is a single branch.
   if (branch === 'india') list = list.filter((d) => d.branch !== 'dubai');
   else if (branch) list = list.filter((d) => d.branch === branch);
+  if (ownership === 'mine') list = list.filter((d) => sameEmail(d.createdByEmail, currentUser && currentUser.email));
+  else if (ownership === 'assigned') list = list.filter((d) => sameEmail(d.assignedTo, currentUser && currentUser.email));
+  else if (ownership === 'unassigned') list = list.filter((d) => !d.assignedTo);
   list = filterByDateRange(list, range.from, range.to);
   list = sortRows(list, sort, accessors);
 
@@ -135,7 +144,19 @@ export default function InvoiceListPage({
           <option value="">All Branches</option>
           {BRANCH_FILTERS.map((b) => <option key={b.value} value={b.value}>{b.label}</option>)}
         </select>
+        <select className="form-input" value={ownership} onChange={(e) => setOwnership(e.target.value)}>
+          <option value="">Anyone</option>
+          <option value="mine">Raised by me</option>
+          <option value="assigned">Assigned to me</option>
+          <option value="unassigned">Unassigned</option>
+        </select>
       </div>
+
+      {narrowScope && (
+        <div style={{ background: 'var(--brand-light)', border: '1px solid #BFE7E1', borderRadius: 8, padding: '8px 12px', marginBottom: 12, fontSize: 12, color: 'var(--brand-dark)' }}>
+          🔒 You are seeing the {isInvoice ? 'invoices' : 'proformas'} you raised, plus anything assigned to you.
+        </div>
+      )}
 
       <DateRangeFilter
         from={range.from} to={range.to} onChange={setRange}
@@ -223,6 +244,11 @@ export default function InvoiceListPage({
                   >
                     {d.createdBy || '—'}
                   </td>
+                  <td style={{ fontSize: 12 }} title={d.assignmentNote || undefined}>
+                    {d.assignedTo
+                      ? <span className="badge badge-invoice">{assigneeLabel(d, users)}</span>
+                      : <span style={{ color: 'var(--muted)' }}>—</span>}
+                  </td>
                   <td>
                     <div className="actions-cell">
                       {!isInvoice && (
@@ -239,6 +265,16 @@ export default function InvoiceListPage({
                             ✓ Invoiced
                           </span>
                         )
+                      )}
+                      {canAssign && (
+                        <button
+                          className="icon-btn"
+                          style={d.assignedTo ? { background: '#DBEAFE', color: '#1E40AF' } : undefined}
+                          onClick={() => onAssign(d.id)}
+                          title={d.assignedTo ? 'Assigned to ' + assigneeLabel(d, users) + ' — click to change' : 'Assign to a user'}
+                        >
+                          👤
+                        </button>
                       )}
                       <button className="icon-btn" style={{ background: '#EDE9FE', color: '#5B21B6' }}
                         onClick={() => onPreview(d.id)} title="Preview before downloading">👁 Preview</button>

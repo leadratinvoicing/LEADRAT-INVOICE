@@ -1,6 +1,8 @@
-import { initializeApp } from 'firebase/app';
+import { deleteApp, initializeApp } from 'firebase/app';
 import { getAnalytics, isSupported as analyticsSupported } from 'firebase/analytics';
-import { getAuth, GoogleAuthProvider, setPersistence, browserLocalPersistence } from 'firebase/auth';
+import {
+  browserLocalPersistence, getAuth, GoogleAuthProvider, inMemoryPersistence, setPersistence, signOut
+} from 'firebase/auth';
 import { initializeFirestore } from 'firebase/firestore';
 
 const firebaseConfig = {
@@ -29,3 +31,23 @@ googleProvider.setCustomParameters({ prompt: 'select_account' });
 analyticsSupported()
   .then((ok) => { if (ok) getAnalytics(app); })
   .catch(() => {});
+
+/**
+ * A throwaway second Firebase app used only to create accounts on an admin's
+ * behalf. `createUserWithEmailAndPassword` signs the new account in on whatever
+ * app it runs against, so running it on the primary app would sign the admin
+ * out. The secondary app has its own auth instance with no persistence, so the
+ * admin's session is never touched.
+ */
+export function withSecondaryAuth(fn) {
+  const name = 'admin-provision-' + Date.now();
+  const secondaryApp = initializeApp(firebaseConfig, name);
+  const secondaryAuth = getAuth(secondaryApp);
+  return Promise.resolve()
+    .then(() => setPersistence(secondaryAuth, inMemoryPersistence).catch(() => {}))
+    .then(() => fn(secondaryAuth))
+    .finally(async () => {
+      try { await signOut(secondaryAuth); } catch { /* already signed out */ }
+      try { await deleteApp(secondaryApp); } catch { /* nothing to clean up */ }
+    });
+}

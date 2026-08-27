@@ -2,7 +2,7 @@
    UTILS — ported verbatim from the original HTML build
    ============================================================ */
 
-import { DEFAULT_NUMBERING, NUMBER_SERIES } from './constants';
+import { BUILT_IN_ROLE_SEEDS, DEFAULT_DEPT_PERMISSIONS, DEFAULT_NUMBERING, NUMBER_SERIES } from './constants';
 
 export function uid() {
   return 'id_' + Date.now() + '_' + Math.floor(Math.random() * 10000);
@@ -497,4 +497,116 @@ export function revenueBySubType(docs) {
   return [...rows.values()]
     .map((r) => ({ ...r, billed: round2(r.billed), revenue: round2(r.revenue) }))
     .sort((a, b) => b.revenue - a.revenue || b.billed - a.billed);
+}
+
+/* ============================================================
+   ROLES, DATA SCOPE AND ASSIGNMENT
+   Branch access says WHICH branches a user reaches; data scope says how much of
+   those branches they see. A user on the 'own' scope works their own book: the
+   documents they raised, plus anything assigned to them. Admins ignore both.
+   ============================================================ */
+
+/** Emails are the identity used on documents — compare them case-insensitively. */
+export function sameEmail(a, b) {
+  return !!a && !!b && String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
+}
+
+/** A user's effective data scope. Admins always see everything. */
+export function dataScopeOf(user) {
+  if (!user || user.role === 'admin') return 'all';
+  return user.dataScope === 'own' ? 'own' : 'all';
+}
+
+/** Is this document the user's own work, or handed to them? */
+export function docBelongsToUser(d, user) {
+  if (!d || !user) return false;
+  const email = user.email;
+  return sameEmail(d.createdByEmail, email) || sameEmail(d.assignedTo, email);
+}
+
+/**
+ * Narrow a document list to what the user is allowed to see. Applied on top of
+ * filterByUserBranch, never instead of it.
+ */
+export function filterByUserScope(list, user) {
+  if (dataScopeOf(user) !== 'own') return list;
+  return list.filter((d) => docBelongsToUser(d, user));
+}
+
+/** Branch access and data scope together — the filter every list should use. */
+export function visibleDocsFor(list, user) {
+  return filterByUserScope(filterByUserBranch(list, user), user);
+}
+
+/**
+ * Clients follow the documents: on the narrow scope a user only sees clients
+ * they have a visible document for, plus any client record they created.
+ */
+export function visibleClientsFor(clients, invoices, user) {
+  const byBranch = filterClientsByUserBranch(clients, invoices, user);
+  if (dataScopeOf(user) !== 'own') return byBranch;
+  const ids = new Set(visibleDocsFor(invoices, user).map((d) => d.clientId).filter(Boolean));
+  return byBranch.filter((c) => ids.has(c.id) || sameEmail(c.createdByEmail, user.email));
+}
+
+/**
+ * The permission set actually in force for a user. A role supplies the baseline;
+ * `permissionsSource: 'custom'` means an admin hand-tuned this one person and
+ * their stored `permissions` win. Users with no role keep their stored set.
+ */
+export function effectivePermissions(user, roles) {
+  if (!user) return {};
+  if (user.role === 'admin') return user.permissions || {};
+  const usingRole = user.roleId && user.permissionsSource !== 'custom';
+  if (usingRole) {
+    const role = (roles || []).find((r) => r.id === user.roleId);
+    if (role && role.permissions) return role.permissions;
+  }
+  return user.permissions || {};
+}
+
+/** Data scope resolves the same way — the role sets it unless overridden. */
+export function effectiveDataScope(user, roles) {
+  if (!user || user.role === 'admin') return 'all';
+  if (user.roleId && user.permissionsSource !== 'custom') {
+    const role = (roles || []).find((r) => r.id === user.roleId);
+    if (role && role.dataScope) return role.dataScope === 'own' ? 'own' : 'all';
+  }
+  return user.dataScope === 'own' ? 'own' : 'all';
+}
+
+/** Display name for a document's assignee, falling back to the raw email. */
+export function assigneeLabel(d, users) {
+  if (!d || !d.assignedTo) return '';
+  const u = (users || []).find((x) => sameEmail(x.email, d.assignedTo));
+  return (u && (u.name || ((u.firstName || '') + ' ' + (u.surname || '')).trim())) || d.assignedToName || d.assignedTo;
+}
+
+/**
+ * The role list an install starts with — each seed borrows the permission set of
+ * the department it is modelled on, so the first admin to open Roles finds
+ * something recognisable rather than a blank page.
+ */
+export function buildSeedRoles() {
+  return BUILT_IN_ROLE_SEEDS.map((seed) => ({
+    id: seed.id,
+    name: seed.name,
+    description: seed.description,
+    dataScope: seed.dataScope,
+    permissions: deepClone(DEFAULT_DEPT_PERMISSIONS[seed.from] || DEFAULT_DEPT_PERMISSIONS.Sales),
+    createdAt: new Date().toISOString()
+  }));
+}
+
+/** Resolve a stored profile into the session shape the app filters on. */
+export function resolveUserSession(profile, roles) {
+  if (!profile) return profile;
+  const role = profile.roleId ? (roles || []).find((r) => r.id === profile.roleId) : null;
+  return {
+    ...profile,
+    role: profile.role || 'user',
+    roleName: role ? role.name : '',
+    permissions: effectivePermissions(profile, roles),
+    dataScope: effectiveDataScope(profile, roles)
+  };
 }

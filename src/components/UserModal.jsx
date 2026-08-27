@@ -2,12 +2,12 @@ import { useEffect, useState } from 'react';
 import { useApp } from '../AppContext';
 import Modal from './Modal';
 import PermissionsGrid from './PermissionsGrid';
-import { BRANCH_ACCESS_OPTIONS, DEPARTMENTS } from '../constants';
+import { BRANCH_ACCESS_OPTIONS, DATA_SCOPE_OPTIONS, DEPARTMENTS } from '../constants';
 import { deepClone } from '../utils';
 import { friendlyAuthError, sendResetEmail } from '../auth';
 
 export default function UserModal({ open, user, onClose, onSave }) {
-  const { getDefaultPermissionsForDept, showToast } = useApp();
+  const { getDefaultPermissionsForDept, roles, showToast } = useApp();
 
   const [firstName, setFirstName] = useState('');
   const [surname, setSurname] = useState('');
@@ -15,6 +15,10 @@ export default function UserModal({ open, user, onClose, onSave }) {
   const [department, setDepartment] = useState('Sales');
   const [status, setStatus] = useState('active');
   const [branchAccess, setBranchAccess] = useState('all');
+  const [roleId, setRoleId] = useState('');
+  const [permissionsSource, setPermissionsSource] = useState('custom');
+  const [dataScope, setDataScope] = useState('all');
+  const [mustChangePassword, setMustChangePassword] = useState(false);
   const [perms, setPerms] = useState({});
   const [saving, setSaving] = useState(false);
   const [sendingReset, setSendingReset] = useState(false);
@@ -27,17 +31,34 @@ export default function UserModal({ open, user, onClose, onSave }) {
     setDepartment(user.department || 'Sales');
     setStatus(user.status || 'active');
     setBranchAccess(user.branchAccess || 'all');
+    setRoleId(user.roleId || '');
+    setPermissionsSource(user.roleId && user.permissionsSource !== 'custom' ? 'role' : 'custom');
+    setDataScope(user.dataScope === 'own' ? 'own' : 'all');
+    setMustChangePassword(!!user.mustChangePassword);
     setPerms(deepClone(user.permissions || getDefaultPermissionsForDept(user.department || 'Sales')));
   }, [open, user, getDefaultPermissionsForDept]);
 
   if (!user) return null;
+
+  const selectedRole = roles.find((r) => r.id === roleId) || null;
+  // A role in force owns the grid and the scope; "custom" hands both back.
+  const usingRole = permissionsSource === 'role' && !!selectedRole;
+  const shownPerms = usingRole ? (selectedRole.permissions || {}) : perms;
+  const shownScope = usingRole && selectedRole.dataScope ? selectedRole.dataScope : dataScope;
 
   const togglePerm = (modKey, act, checked) =>
     setPerms((p) => ({ ...p, [modKey]: { ...(p[modKey] || {}), [act]: checked } }));
 
   function applyDeptDefaults() {
     setPerms(getDefaultPermissionsForDept(department));
+    setPermissionsSource('custom');
     showToast('Loaded default permissions for ' + department);
+  }
+
+  /** Switching to custom starts from whatever the user can do right now. */
+  function detachFromRole() {
+    if (selectedRole) setPerms(deepClone(selectedRole.permissions || {}));
+    setPermissionsSource('custom');
   }
 
   async function sendReset() {
@@ -67,7 +88,13 @@ export default function UserModal({ open, user, onClose, onSave }) {
         department,
         status,
         branchAccess,
-        permissions: perms,
+        roleId: roleId || null,
+        permissionsSource: usingRole ? 'role' : 'custom',
+        // The stored grid stays as a snapshot even while a role is in force, so
+        // detaching later leaves the user with the access they had.
+        permissions: usingRole ? deepClone(selectedRole.permissions || {}) : perms,
+        dataScope: shownScope,
+        mustChangePassword,
         updatedAt: new Date().toISOString()
       });
     } finally {
@@ -124,41 +151,95 @@ export default function UserModal({ open, user, onClose, onSave }) {
       </div>
 
       <hr className="section-divider" />
-      <div className="card-title">Branch Access</div>
-      <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 10 }}>
-        Which branches this user can view and edit invoices for. Data outside the selected branches is
-        hidden from them in dashboards, invoice lists, and reports.
-      </p>
+      <div className="card-title">Visibility</div>
+      <div className="form-grid-2">
+        <div className="form-group">
+          <label className="form-label">Allowed Branch(es)</label>
+          <select className="form-input" value={branchAccess} onChange={(e) => setBranchAccess(e.target.value)}>
+            {BRANCH_ACCESS_OPTIONS.map((b) => <option key={b.value} value={b.value}>{b.label}</option>)}
+          </select>
+          <div className="password-hint">Admins always reach every branch regardless of this setting.</div>
+        </div>
+        <div className="form-group">
+          <label className="form-label">Data Scope</label>
+          <select className="form-input" value={shownScope} disabled={usingRole && !!selectedRole.dataScope}
+            style={usingRole && selectedRole.dataScope ? { background: '#F3F4F6', cursor: 'not-allowed' } : undefined}
+            onChange={(e) => setDataScope(e.target.value)}>
+            {DATA_SCOPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+          <div className="password-hint">
+            {usingRole && selectedRole.dataScope
+              ? 'Set by the "' + selectedRole.name + '" role.'
+              : shownScope === 'own'
+              ? 'Sees only the invoices, proformas and clients they raised or were assigned.'
+              : 'Sees everything in the branches above.'}
+          </div>
+        </div>
+      </div>
+
+      <hr className="section-divider" />
+      <div className="card-title">Role &amp; Permissions</div>
       <div className="form-group">
-        <label className="form-label">Allowed Branch(es)</label>
-        <select className="form-input" value={branchAccess} onChange={(e) => setBranchAccess(e.target.value)}>
-          {BRANCH_ACCESS_OPTIONS.map((b) => <option key={b.value} value={b.value}>{b.label}</option>)}
+        <label className="form-label">Role</label>
+        <select className="form-input" value={roleId} onChange={(e) => {
+          const id = e.target.value;
+          setRoleId(id);
+          if (id) {
+            const r = roles.find((x) => x.id === id);
+            setPermissionsSource('role');
+            if (r && r.dataScope) setDataScope(r.dataScope);
+          } else {
+            setPermissionsSource('custom');
+          }
+        }}>
+          <option value="">-- No role (custom permissions) --</option>
+          {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
         </select>
-        <div className="password-hint">Admins always have access to all branches regardless of this setting.</div>
+        {selectedRole && selectedRole.description && (
+          <div className="password-hint">{selectedRole.description}</div>
+        )}
       </div>
 
-      <hr className="section-divider" />
-      <div className="card-title">Module Access &amp; Permissions</div>
+      {selectedRole && (
+        <div className="checkbox-row" style={{ marginBottom: 12 }}>
+          <input
+            id="umCustomPerms" type="checkbox" checked={permissionsSource === 'custom'}
+            onChange={(e) => (e.target.checked ? detachFromRole() : setPermissionsSource('role'))}
+          />
+          <label htmlFor="umCustomPerms">Override the role with custom permissions for this user</label>
+        </div>
+      )}
+
       <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12 }}>
-        Enable modules this user can access, and the actions they can perform within each.
+        {usingRole
+          ? 'These come from the "' + selectedRole.name + '" role and update whenever it is edited. Tick the box above to hand-tune them for this person.'
+          : 'Enable the modules this user can access, and the actions they can perform within each.'}
       </p>
-      <PermissionsGrid perms={perms} onToggle={togglePerm} />
-
-      <div style={{ marginTop: 12, padding: 10, background: 'var(--brand-light)', borderRadius: 6, fontSize: 12, color: 'var(--brand-dark)' }}>
-        💡 Click <strong>&quot;Apply Department Defaults&quot;</strong> below to reset this user&apos;s permissions to their department&apos;s standard set.
+      <div style={usingRole ? { opacity: 0.65, pointerEvents: 'none' } : undefined}>
+        <PermissionsGrid perms={shownPerms} onToggle={togglePerm} />
       </div>
 
       <hr className="section-divider" />
-      <div className="card-title">Reset Password</div>
-      <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 10 }}>
-        Passwords are held by Firebase Authentication, so they can&apos;t be set directly from here.
-        Send this user a reset link and they choose their own new password.
-      </p>
-      <button className="btn btn-secondary" onClick={sendReset} disabled={sendingReset || user.authProvider === 'google'}>
-        {sendingReset ? 'Sending…' : '✉ Send Password Reset Email'}
-      </button>
-      {user.authProvider === 'google' && (
-        <div className="password-hint">This account signs in with Google — it has no password to reset.</div>
+      <div className="card-title">Password</div>
+      {user.authProvider === 'google' ? (
+        <p style={{ fontSize: 12, color: 'var(--muted)' }}>
+          This account signs in with Google — there is no password to manage here.
+        </p>
+      ) : (
+        <>
+          <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 10 }}>
+            Firebase holds passwords, and its browser SDK cannot set one for another account — that needs a
+            server. Either send a reset link, or require a change at the user&apos;s next sign-in.
+          </p>
+          <button className="btn btn-secondary" onClick={sendReset} disabled={sendingReset}>
+            {sendingReset ? 'Sending…' : '✉ Send Password Reset Email'}
+          </button>
+          <div className="checkbox-row" style={{ marginTop: 12 }}>
+            <input id="umMustChange" type="checkbox" checked={mustChangePassword}
+              onChange={(e) => setMustChangePassword(e.target.checked)} />
+            <label htmlFor="umMustChange">Require a password change at next sign-in</label>
+          </div>
+        </>
       )}
     </Modal>
   );

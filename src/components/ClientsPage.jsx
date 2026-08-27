@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../AppContext';
-import { clientRegionMap, filterClientsByUserBranch } from '../utils';
+import { clientRegionMap, visibleClientsFor } from '../utils';
 import SortableTh, { sortRows, useSort } from './SortableTh';
 
 const COLUMNS = [
@@ -62,7 +62,7 @@ export default function ClientsPage({ initialRegion, onAdd, onEdit, onDelete, on
 
   // Branch access first — non-admins only see clients tied to their allowed
   // branches. Admins see all clients regardless.
-  let list = filterClientsByUserBranch(clients, invoices, currentUser);
+  let list = visibleClientsFor(clients, invoices, currentUser);
 
   // Region filter dropdown (independent of branch access, applied above)
   if (region === 'india' || region === 'dubai') {

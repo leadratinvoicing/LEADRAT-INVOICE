@@ -154,6 +154,8 @@ export default function AuthScreen() {
         role: 'user',
         status: 'active',
         branchAccess: 'all',
+        // Self-signups start narrow — an admin widens the scope deliberately.
+        dataScope: 'own',
         permissions: stateRef.current.deptPermissions[department]
           ? deepClone(stateRef.current.deptPermissions[department])
           : deepClone(MINIMAL_PERMISSIONS),
@@ -280,6 +282,7 @@ export default function AuthScreen() {
       role: 'user',
       status: 'active',
       branchAccess: 'all',
+      dataScope: 'own',
       permissions: deepClone(MINIMAL_PERMISSIONS),
       createdAt: new Date().toISOString()
     };

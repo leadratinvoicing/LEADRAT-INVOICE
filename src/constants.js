@@ -84,8 +84,8 @@ export const REGION_TABS = [
 ];
 
 export const PERMISSION_MODULES = [
-  { key: 'invoices', label: 'Tax Invoices', actions: ['view', 'create', 'edit', 'delete', 'export', 'generatePdf'] },
-  { key: 'proforma', label: 'Proforma Invoices', actions: ['view', 'create', 'edit', 'delete', 'export', 'generatePdf'] },
+  { key: 'invoices', label: 'Tax Invoices', actions: ['view', 'create', 'edit', 'delete', 'export', 'generatePdf', 'assign'] },
+  { key: 'proforma', label: 'Proforma Invoices', actions: ['view', 'create', 'edit', 'delete', 'export', 'generatePdf', 'assign'] },
   { key: 'clients', label: 'Clients', actions: ['view', 'create', 'edit', 'delete'] },
   { key: 'import', label: 'Bulk Import', actions: ['view', 'import', 'downloadTemplate'] },
   { key: 'settings', label: 'Settings', actions: ['view', 'editProfile', 'changePassword'] }
@@ -93,49 +93,72 @@ export const PERMISSION_MODULES = [
 
 export const ACTION_LABELS = {
   view: 'View', create: 'Create', edit: 'Edit', delete: 'Delete', export: 'Export',
-  generatePdf: 'Generate PDF', import: 'Import Excel', downloadTemplate: 'Download Template',
-  editProfile: 'Edit Profile', changePassword: 'Change Password'
+  generatePdf: 'Generate PDF', assign: 'Assign to Users', import: 'Import Excel',
+  downloadTemplate: 'Download Template', editProfile: 'Edit Profile', changePassword: 'Change Password'
 };
+
+/**
+ * How much of the data a user sees inside the branches they already have access
+ * to. 'own' is the narrow view asked for by sales teams: a rep works their own
+ * book and nothing else. Admins ignore this entirely.
+ */
+export const DATA_SCOPE_OPTIONS = [
+  { value: 'all', label: 'All records in their branches', short: 'All records' },
+  { value: 'own', label: 'Only records they created or are assigned', short: 'Own + assigned' }
+];
+
+/**
+ * Roles carry permissions; departments stay as org structure. A role is stored
+ * as { id, name, description, permissions, dataScope }, and these ship as the
+ * starting set so an install has something usable before anyone edits them.
+ */
+export const BUILT_IN_ROLE_SEEDS = [
+  { id: 'role_admin_ops', name: 'Finance Manager', description: 'Full access to every document and client record.', from: 'Finance', dataScope: 'all' },
+  { id: 'role_sales_lead', name: 'Sales Lead', description: 'Creates and edits documents across the team, sees everything.', from: 'Sales', dataScope: 'all' },
+  { id: 'role_sales_rep', name: 'Sales Executive', description: 'Works their own book — sees only what they raised or were assigned.', from: 'Sales', dataScope: 'own' },
+  { id: 'role_cs', name: 'Customer Success', description: 'Manages renewals and client records for their own accounts.', from: 'Customer Success', dataScope: 'own' },
+  { id: 'role_viewer', name: 'Read Only', description: 'Can view and export, but cannot change anything.', from: 'Development', dataScope: 'all' }
+];
 
 export const DEFAULT_DEPT_PERMISSIONS = {
   Sales: {
-    invoices: { view: true, create: true, edit: true, delete: false, export: true, generatePdf: true },
-    proforma: { view: true, create: true, edit: true, delete: false, export: true, generatePdf: true },
+    invoices: { view: true, create: true, edit: true, delete: false, export: true, generatePdf: true, assign: true },
+    proforma: { view: true, create: true, edit: true, delete: false, export: true, generatePdf: true, assign: true },
     clients: { view: true, create: true, edit: true, delete: false },
     import: { view: true, import: true, downloadTemplate: true },
     settings: { view: true, editProfile: true, changePassword: true }
   },
   Development: {
-    invoices: { view: true, create: false, edit: false, delete: false, export: true, generatePdf: true },
-    proforma: { view: true, create: false, edit: false, delete: false, export: true, generatePdf: true },
+    invoices: { view: true, create: false, edit: false, delete: false, export: true, generatePdf: true, assign: false },
+    proforma: { view: true, create: false, edit: false, delete: false, export: true, generatePdf: true, assign: false },
     clients: { view: true, create: false, edit: false, delete: false },
     import: { view: false, import: false, downloadTemplate: false },
     settings: { view: true, editProfile: true, changePassword: true }
   },
   HR: {
-    invoices: { view: false, create: false, edit: false, delete: false, export: false, generatePdf: false },
-    proforma: { view: false, create: false, edit: false, delete: false, export: false, generatePdf: false },
+    invoices: { view: false, create: false, edit: false, delete: false, export: false, generatePdf: false, assign: false },
+    proforma: { view: false, create: false, edit: false, delete: false, export: false, generatePdf: false, assign: false },
     clients: { view: false, create: false, edit: false, delete: false },
     import: { view: false, import: false, downloadTemplate: false },
     settings: { view: true, editProfile: true, changePassword: true }
   },
   'Customer Success': {
-    invoices: { view: true, create: true, edit: true, delete: false, export: true, generatePdf: true },
-    proforma: { view: true, create: true, edit: true, delete: false, export: true, generatePdf: true },
+    invoices: { view: true, create: true, edit: true, delete: false, export: true, generatePdf: true, assign: true },
+    proforma: { view: true, create: true, edit: true, delete: false, export: true, generatePdf: true, assign: true },
     clients: { view: true, create: true, edit: true, delete: false },
     import: { view: true, import: false, downloadTemplate: true },
     settings: { view: true, editProfile: true, changePassword: true }
   },
   Operations: {
-    invoices: { view: true, create: true, edit: true, delete: false, export: true, generatePdf: true },
-    proforma: { view: true, create: true, edit: true, delete: false, export: true, generatePdf: true },
+    invoices: { view: true, create: true, edit: true, delete: false, export: true, generatePdf: true, assign: true },
+    proforma: { view: true, create: true, edit: true, delete: false, export: true, generatePdf: true, assign: true },
     clients: { view: true, create: true, edit: true, delete: true },
     import: { view: true, import: true, downloadTemplate: true },
     settings: { view: true, editProfile: true, changePassword: true }
   },
   Finance: {
-    invoices: { view: true, create: true, edit: true, delete: true, export: true, generatePdf: true },
-    proforma: { view: true, create: true, edit: true, delete: true, export: true, generatePdf: true },
+    invoices: { view: true, create: true, edit: true, delete: true, export: true, generatePdf: true, assign: true },
+    proforma: { view: true, create: true, edit: true, delete: true, export: true, generatePdf: true, assign: true },
     clients: { view: true, create: true, edit: true, delete: true },
     import: { view: true, import: true, downloadTemplate: true },
     settings: { view: true, editProfile: true, changePassword: true }
@@ -148,8 +171,8 @@ export const DEFAULT_DEPT_PERMISSIONS = {
  * always reachable, matching userCanAccess().
  */
 export const MINIMAL_PERMISSIONS = {
-  invoices: { view: false, create: false, edit: false, delete: false, export: false, generatePdf: false },
-  proforma: { view: false, create: false, edit: false, delete: false, export: false, generatePdf: false },
+  invoices: { view: false, create: false, edit: false, delete: false, export: false, generatePdf: false, assign: false },
+  proforma: { view: false, create: false, edit: false, delete: false, export: false, generatePdf: false, assign: false },
   clients: { view: false, create: false, edit: false, delete: false },
   import: { view: false, import: false, downloadTemplate: false },
   settings: { view: true, editProfile: true, changePassword: true }

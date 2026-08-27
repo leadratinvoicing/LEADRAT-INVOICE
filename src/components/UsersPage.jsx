@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useApp } from '../AppContext';
-import { BRANCH_ACCESS_OPTIONS, DEFAULT_DEPT_PERMISSIONS, DEPARTMENTS } from '../constants';
+import { BRANCH_ACCESS_OPTIONS, DATA_SCOPE_OPTIONS, DEFAULT_DEPT_PERMISSIONS, DEPARTMENTS } from '../constants';
 import { deepClone } from '../utils';
 import PermissionsGrid from './PermissionsGrid';
+import RolesPanel from './RolesPanel';
 
 /** 'all' → '🌐 All', 'dubai' → '🇦🇪 Dubai', … for the compact table column. */
 function branchAccessShort(value) {
@@ -10,10 +11,12 @@ function branchAccessShort(value) {
   return opt ? opt.short : BRANCH_ACCESS_OPTIONS[0].short;
 }
 
-export default function UsersPage({ onView, onEdit, onDelete }) {
-  const { users, deptPermissions, saveDeptPermissions, reloadUsers, showToast } = useApp();
+export default function UsersPage({ onView, onEdit, onDelete, onCreate }) {
+  const { users, roles, deptPermissions, saveDeptPermissions, reloadUsers, showToast } = useApp();
   const [search, setSearch] = useState('');
   const [dept, setDept] = useState('');
+  const [roleFilter, setRoleFilter] = useState('');
+  const [rolesPanelOpen, setRolesPanelOpen] = useState(false);
   const [rolesOpen, setRolesOpen] = useState(false);
   const [activeDept, setActiveDept] = useState(DEPARTMENTS[0]);
   const [draftPerms, setDraftPerms] = useState(null);
@@ -29,6 +32,16 @@ export default function UsersPage({ onView, onEdit, onDelete }) {
     );
   }
   if (dept) list = list.filter((u) => u.department === dept);
+  if (roleFilter) list = list.filter((u) => (u.roleId || '') === (roleFilter === 'none' ? '' : roleFilter));
+
+  const roleName = (u) => {
+    const r = roles.find((x) => x.id === u.roleId);
+    return r ? r.name : '';
+  };
+  const scopeShort = (u) => {
+    const v = u.dataScope === 'own' ? 'own' : 'all';
+    return (DATA_SCOPE_OPTIONS.find((o) => o.value === v) || {}).short || v;
+  };
 
   function openRolesPanel() {
     const next = !rolesOpen;
@@ -91,7 +104,11 @@ export default function UsersPage({ onView, onEdit, onDelete }) {
           <button className="btn btn-secondary" onClick={refresh} disabled={refreshing} title="Reload latest user list from shared storage">
             🔄 {refreshing ? 'Refreshing…' : 'Refresh'}
           </button>
-          <button className="btn btn-secondary" onClick={openRolesPanel}>Manage Role Defaults</button>
+          <button className="btn btn-secondary" onClick={() => setRolesPanelOpen((o) => !o)}>
+            🎭 Roles &amp; Permissions
+          </button>
+          <button className="btn btn-secondary" onClick={openRolesPanel}>Department Defaults</button>
+          <button className="btn btn-primary" onClick={onCreate}>+ Create User</button>
         </div>
       </div>
 
@@ -102,19 +119,26 @@ export default function UsersPage({ onView, onEdit, onDelete }) {
           <option value="">All Departments</option>
           {DEPARTMENTS.map((d) => <option key={d} value={d}>{d}</option>)}
         </select>
+        <select className="form-input" value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}>
+          <option value="">All Roles</option>
+          {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+          <option value="none">— No role assigned —</option>
+        </select>
       </div>
+
+      {rolesPanelOpen && <RolesPanel onClose={() => setRolesPanelOpen(false)} />}
 
       <div className="table-wrap">
         <table>
           <thead>
             <tr>
-              <th>Name</th><th>Email</th><th>Mobile</th><th>Department</th><th>Branch</th><th>Status</th><th>Joined</th>
+              <th>Name</th><th>Email</th><th>Department</th><th>Role</th><th>Branch</th><th>Data Scope</th><th>Status</th><th>Joined</th>
               <th style={{ textAlign: 'right' }}>Actions</th>
             </tr>
           </thead>
           <tbody>
             {list.length === 0 ? (
-              <tr><td colSpan={8}>
+              <tr><td colSpan={9}>
                 <div className="empty-state">
                   <div className="empty-state-icon">👥</div>
                   <div className="empty-state-title">No users found</div>
@@ -132,10 +156,17 @@ export default function UsersPage({ onView, onEdit, onDelete }) {
                       {u.name || ((u.firstName || '') + ' ' + (u.surname || '')).trim() || u.email}
                     </a>
                   </td>
-                  <td style={{ fontSize: 12 }}>{u.email || ''}</td>
-                  <td style={{ fontSize: 12 }}>{mobile || '-'}</td>
+                  <td style={{ fontSize: 12 }} title={mobile || undefined}>{u.email || ''}</td>
                   <td><span className="badge badge-invoice">{u.department || '-'}</span></td>
+                  <td style={{ fontSize: 12 }}>
+                    {roleName(u)
+                      ? <span className="badge badge-proforma">{roleName(u)}</span>
+                      : <span style={{ color: 'var(--muted)' }}>Custom</span>}
+                  </td>
                   <td style={{ fontSize: 12 }}>{branchAccessShort(u.branchAccess)}</td>
+                  <td style={{ fontSize: 12 }}>
+                    <span className={'badge ' + (u.dataScope === 'own' ? 'badge-partial' : 'badge-paid')}>{scopeShort(u)}</span>
+                  </td>
                   <td><span className={'badge ' + (status === 'active' ? 'badge-paid' : 'badge-due')}>{status}</span></td>
                   <td style={{ fontSize: 12 }}>{joined}</td>
                   <td>

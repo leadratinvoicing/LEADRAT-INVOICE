@@ -2,9 +2,9 @@ import { useMemo, useRef, useState } from 'react';
 import { useApp } from '../AppContext';
 import { REGION_TABS } from '../constants';
 import {
-  branchLabel, filterByDateRange, filterByUserBranch, filterClientsByUserBranch, fmtDate,
-  fmtMoneyForRegion, outstandingOf, parseDateValue, receivedOf, regionOf, revenueBySubType,
-  round2, statusBadgeOf, visibleRegionsForUser
+  branchLabel, dataScopeOf, filterByDateRange, fmtDate, fmtMoneyForRegion, outstandingOf,
+  parseDateValue, receivedOf, regionOf, revenueBySubType, round2, statusBadgeOf,
+  visibleClientsFor, visibleDocsFor, visibleRegionsForUser
 } from '../utils';
 import DateRangeFilter from './DateRangeFilter';
 import SortableTh, { sortRows, useSort } from './SortableTh';
@@ -54,11 +54,12 @@ export default function Dashboard({ onOpenTds, onViewUser, onNavigate, onDownloa
   // Apply the CURRENT USER'S branch access first, then the region filter, then
   // the date window. Reconciliation still reads the FULL document set below, so
   // narrowing the view never makes a proforma look unpaid.
-  const userScoped = filterByUserBranch(invoices, currentUser);
+  const userScoped = visibleDocsFor(invoices, currentUser);
   const all = filterByDateRange(userScoped.filter(belongsToRegion), range.from, range.to);
   const inv = all.filter((d) => d.docType === 'invoice');
   const pro = all.filter((d) => d.docType === 'proforma');
   const rangeActive = !!(range.from || range.to);
+  const narrowScope = dataScopeOf(currentUser) === 'own';
   // Revenue is the money actually received on tax invoices, so a part payment
   // counts for exactly what came in. Pending amounts are derived per document: a
   // proforma stops being pending for whatever its tax invoices already cover, so
@@ -97,7 +98,7 @@ export default function Dashboard({ onOpenTds, onViewUser, onNavigate, onDownloa
     clientCount = new Set(all.map((d) => d.clientId).filter(Boolean)).size;
   } else if (region === 'all') {
     // "All" tab: count clients whose data is visible to this user
-    clientCount = filterClientsByUserBranch(clients, invoices, currentUser).length;
+    clientCount = visibleClientsFor(clients, invoices, currentUser).length;
   } else {
     // Region-specific tab: unique clients appearing in the region-filtered docs
     clientCount = new Set(all.map((d) => d.clientId).filter(Boolean)).size;
@@ -211,6 +212,12 @@ export default function Dashboard({ onOpenTds, onViewUser, onNavigate, onDownloa
           </button>
         ))}
       </div>
+
+      {narrowScope && (
+        <div style={{ background: 'var(--brand-light)', border: '1px solid #BFE7E1', borderRadius: 8, padding: '8px 12px', marginBottom: 12, fontSize: 12, color: 'var(--brand-dark)' }}>
+          🔒 These figures cover the documents you raised, plus anything assigned to you.
+        </div>
+      )}
 
       {/* Date window — narrows every card below and the tables that follow */}
       <DateRangeFilter

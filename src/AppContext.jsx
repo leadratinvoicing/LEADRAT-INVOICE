@@ -5,7 +5,7 @@ import Store from './store';
 import {
   DEFAULT_ADMIN_PASS, DEFAULT_COMPANY, DEFAULT_DEPT_PERMISSIONS, DEFAULT_NUMBERING
 } from './constants';
-import { deepClone } from './utils';
+import { buildSeedRoles, deepClone, resolveUserSession } from './utils';
 
 const AppContext = createContext(null);
 
@@ -46,6 +46,8 @@ export function AppProvider({ children }) {
   const [company, setCompany] = useState(DEFAULT_COMPANY);
   const [numbering, setNumbering] = useState(DEFAULT_NUMBERING);
   const [deptPermissions, setDeptPermissions] = useState(() => deepClone(DEFAULT_DEPT_PERMISSIONS));
+  // Admin-defined roles. Each carries a permission set and a default data scope.
+  const [roles, setRoles] = useState([]);
   const [adminPass, setAdminPass] = useState(DEFAULT_ADMIN_PASS);
   const [currentUser, setCurrentUser] = useState(null);
   const [toasts, setToasts] = useState([]);
@@ -53,7 +55,7 @@ export function AppProvider({ children }) {
   // Mirror of the latest state so async handlers never read a stale closure —
   // this replaces the mutable `APP` object the original script relied on.
   const ref = useRef({});
-  ref.current = { users, invoices, clients, company, numbering, deptPermissions, adminPass, currentUser };
+  ref.current = { users, invoices, clients, company, numbering, deptPermissions, roles, adminPass, currentUser };
 
   // Set while a signup is mid-flight so the auth observer doesn't briefly log the
   // brand-new account in before we sign it back out.
@@ -97,6 +99,12 @@ export function AppProvider({ children }) {
     await Store.set('deptPermissions', p);
   }, []);
 
+  const saveRoles = useCallback(async (list) => {
+    setRoles(list);
+    ref.current.roles = list;
+    await Store.set('roles', list);
+  }, []);
+
   const saveAdminPass = useCallback(async (p) => {
     setAdminPass(p);
     ref.current.adminPass = p;
@@ -131,6 +139,7 @@ export function AppProvider({ children }) {
         numbering: s.numbering || {},
         company: s.company || {},
         deptPermissions: s.deptPermissions || {},
+        roles: s.roles || [],
         adminPass: s.adminPass || DEFAULT_ADMIN_PASS
       }
     };
@@ -146,6 +155,7 @@ export function AppProvider({ children }) {
       : ref.current.numbering;
     const nextCompany = d.company && typeof d.company === 'object' ? d.company : ref.current.company;
     const nextPerms = d.deptPermissions && typeof d.deptPermissions === 'object' ? d.deptPermissions : ref.current.deptPermissions;
+    const nextRoles = Array.isArray(d.roles) ? d.roles : ref.current.roles;
     const nextAdminPass = d.adminPass || ref.current.adminPass;
 
     setInvoices(nextInvoices); ref.current.invoices = nextInvoices;
@@ -154,6 +164,7 @@ export function AppProvider({ children }) {
     setNumbering(nextNumbering); ref.current.numbering = nextNumbering;
     setCompany(nextCompany); ref.current.company = nextCompany;
     setDeptPermissions(nextPerms); ref.current.deptPermissions = nextPerms;
+    setRoles(nextRoles); ref.current.roles = nextRoles;
     setAdminPass(nextAdminPass); ref.current.adminPass = nextAdminPass;
 
     await Promise.all([
@@ -163,6 +174,7 @@ export function AppProvider({ children }) {
       Store.set('numbering', nextNumbering),
       Store.set('company', nextCompany),
       Store.set('deptPermissions', nextPerms),
+      Store.set('roles', nextRoles),
       Store.set('adminPass', nextAdminPass)
     ]);
 
@@ -194,17 +206,42 @@ export function AppProvider({ children }) {
     return ref.current.clients;
   }, []);
 
+  const reloadRoles = useCallback(async () => {
+    try {
+      const latest = await Store.get('roles', [], { bypassCache: true });
+      if (Array.isArray(latest)) { setRoles(latest); ref.current.roles = latest; return latest; }
+    } catch (e) { console.warn('[reload] roles failed', e); }
+    return ref.current.roles;
+  }, []);
+
   /* ---------------- SESSION ---------------- */
+  /**
+   * A stored profile becomes a session user only after its role is resolved:
+   * the permission set and data scope in force are stamped on, so every
+   * downstream check reads a single, already-resolved object.
+   */
   const enterApp = useCallback((user) => {
-    setCurrentUser(user);
-    ref.current.currentUser = user;
-    writeSession(user);
+    const resolved = resolveUserSession(user, ref.current.roles);
+    setCurrentUser(resolved);
+    ref.current.currentUser = resolved;
+    writeSession(resolved);
   }, []);
 
   const clearSession = useCallback(() => {
     setCurrentUser(null);
     ref.current.currentUser = null;
     writeSession(null);
+  }, []);
+
+  /** Re-apply role changes to the live session without a sign-out. */
+  const refreshSessionUser = useCallback(() => {
+    const u = ref.current.currentUser;
+    if (!u || u.role === 'admin') return;
+    const profile = ref.current.users.find((x) => x.email === u.email) || u;
+    const resolved = resolveUserSession(profile, ref.current.roles);
+    setCurrentUser(resolved);
+    ref.current.currentUser = resolved;
+    writeSession(resolved);
   }, []);
 
   const getDefaultPermissionsForDept = useCallback((dept) => {
@@ -228,14 +265,15 @@ export function AppProvider({ children }) {
 
   /* ---------------- BOOT ---------------- */
   const loadAll = useCallback(async () => {
-    const [u, ap, inv, cl, savedCompany, savedNumbering, savedDeptPerms] = await Promise.all([
+    const [u, ap, inv, cl, savedCompany, savedNumbering, savedDeptPerms, savedRoles] = await Promise.all([
       Store.get('users', []),
       Store.get('adminPass', DEFAULT_ADMIN_PASS),
       Store.get('invoices', []),
       Store.get('clients', []),
       Store.get('company', null),
       Store.get('numbering', null),
-      Store.get('deptPermissions', null)
+      Store.get('deptPermissions', null),
+      Store.get('roles', null)
     ]);
 
     setUsers(u || []); ref.current.users = u || [];
@@ -278,6 +316,15 @@ export function AppProvider({ children }) {
 
     const dp = savedDeptPerms || deepClone(DEFAULT_DEPT_PERMISSIONS);
     setDeptPermissions(dp); ref.current.deptPermissions = dp;
+
+    // First run on an install that predates roles: lay down the starter set so
+    // the Roles panel opens with something to work from rather than empty.
+    let rolesToUse = Array.isArray(savedRoles) ? savedRoles : null;
+    if (!rolesToUse || rolesToUse.length === 0) {
+      rolesToUse = buildSeedRoles();
+      try { await Store.set('roles', rolesToUse); } catch (e) { console.warn('[init] role seeding failed', e); }
+    }
+    setRoles(rolesToUse); ref.current.roles = rolesToUse;
 
     console.log('[init] Loaded ' + (u || []).length + ' users, ' + (inv || []).length + ' invoices, ' + (cl || []).length + ' clients from storage.');
     return u || [];
@@ -353,13 +400,13 @@ export function AppProvider({ children }) {
 
   const value = {
     booted, storageHealthy, bannerDismissed, setBannerDismissed,
-    users, invoices, clients, company, numbering, deptPermissions, adminPass, currentUser,
+    users, invoices, clients, company, numbering, deptPermissions, roles, adminPass, currentUser,
     setUsers, setInvoices, setClients, setCurrentUser,
-    saveUsers, saveInvoices, saveClients, saveNumbering, saveDeptPermissions, saveAdminPass, saveCompany,
-    reloadUsers, reloadInvoices, reloadClients,
+    saveUsers, saveInvoices, saveClients, saveNumbering, saveDeptPermissions, saveRoles, saveAdminPass, saveCompany,
+    reloadUsers, reloadInvoices, reloadClients, reloadRoles,
     buildBackupPayload, restoreBackup,
     enterApp, clearSession, signupInProgress,
-    getDefaultPermissionsForDept, userCanAccess,
+    getDefaultPermissionsForDept, userCanAccess, refreshSessionUser,
     toasts, showToast,
     stateRef: ref
   };

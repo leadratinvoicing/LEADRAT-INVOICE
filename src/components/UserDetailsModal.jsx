@@ -1,5 +1,7 @@
 import Modal from './Modal';
-import { ACTION_LABELS, BRANCH_ACCESS_OPTIONS, PERMISSION_MODULES } from '../constants';
+import { useApp } from '../AppContext';
+import { ACTION_LABELS, BRANCH_ACCESS_OPTIONS, DATA_SCOPE_OPTIONS, PERMISSION_MODULES } from '../constants';
+import { effectivePermissions } from '../utils';
 
 function DetailRow({ label, value }) {
   return (
@@ -11,13 +13,18 @@ function DetailRow({ label, value }) {
 }
 
 export default function UserDetailsModal({ open, user, onClose, onEdit }) {
+  const { roles } = useApp();
   if (!user) return null;
 
   const status = user.status || 'active';
   const joined = user.createdAt ? new Date(user.createdAt).toLocaleString('en-GB') : '-';
   const updated = user.updatedAt ? new Date(user.updatedAt).toLocaleString('en-GB') : '-';
   const mobile = ((user.countryCode || '') + ' ' + (user.mobile || '')).trim() || '-';
-  const perms = user.permissions || {};
+  // Show what is actually in force, which a role may be supplying.
+  const perms = effectivePermissions(user, roles);
+  const assignedRole = roles.find((r) => r.id === user.roleId) || null;
+  const scope = user.dataScope === 'own' ? 'own' : 'all';
+  const scopeLabel = (DATA_SCOPE_OPTIONS.find((o) => o.value === scope) || {}).label || scope;
   const fullName = user.name || ((user.firstName || '') + ' ' + (user.surname || '')).trim();
   const branchAccess = user.branchAccess || 'all';
   const branchAccessLabel = (BRANCH_ACCESS_OPTIONS.find((b) => b.value === branchAccess) || {}).label || branchAccess;
@@ -56,6 +63,9 @@ export default function UserDetailsModal({ open, user, onClose, onEdit }) {
       <DetailRow label="Status" value={status} />
       <DetailRow label="Role" value={user.role === 'admin' ? 'Administrator' : 'User'} />
       <DetailRow label="Branch Access" value={branchAccessLabel} />
+      <DetailRow label="Assigned Role" value={assignedRole ? assignedRole.name + (user.permissionsSource === 'custom' ? ' (overridden)' : '') : 'None — custom permissions'} />
+      <DetailRow label="Data Scope" value={scopeLabel} />
+      <DetailRow label="Password" value={user.mustChangePassword ? 'Change required at next sign-in' : 'Set by the user'} />
       <DetailRow label="Joined" value={joined} />
       <DetailRow label="Last Updated" value={updated} />
 

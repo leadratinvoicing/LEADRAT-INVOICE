@@ -10,7 +10,7 @@ import {
   signInAnonymously,
   updateProfile
 } from 'firebase/auth';
-import { auth, googleProvider } from './firebase';
+import { auth, googleProvider, withSecondaryAuth } from './firebase';
 
 /* ============================================================
    FIREBASE AUTHENTICATION
@@ -99,4 +99,26 @@ export function friendlyAuthError(e) {
     default:
       return (e && e.message) ? e.message.replace(/^Firebase:\s*/, '') : String(e);
   }
+}
+
+/**
+ * Create a login for someone else without disturbing the admin's own session.
+ *
+ * Firebase's client SDK has no "create user as admin" call — signing up always
+ * signs the new account in. Running it against a secondary app keeps that
+ * sign-in isolated, so the admin stays exactly where they were. Returns the new
+ * account's uid.
+ *
+ * Note the matching limitation: there is no client-side way to CHANGE another
+ * user's password. That needs the Admin SDK on a server. Use sendResetEmail(),
+ * or set `mustChangePassword` on the profile, instead.
+ */
+export function createUserAsAdmin(email, password, displayName) {
+  return withSecondaryAuth(async (secondaryAuth) => {
+    const cred = await createUserWithEmailAndPassword(secondaryAuth, email, password);
+    if (displayName) {
+      try { await updateProfile(cred.user, { displayName }); } catch { /* non-fatal */ }
+    }
+    return cred.user.uid;
+  });
 }
