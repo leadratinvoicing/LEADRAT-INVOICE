@@ -433,3 +433,68 @@ export function statusBadgeOf(d, invoices) {
   if (receivedOf(d) > MONEY_EPS) return { key: 'partial', label: 'Part Paid', cls: 'badge-partial' };
   return { key: 'due', label: 'Due', cls: 'badge-due' };
 }
+
+/* ============================================================
+   DATE RANGE
+   Every list and the dashboard narrow to a window of invoice dates. An empty
+   bound is open-ended, so "from" alone means "everything since", and both
+   empty means all time.
+   ============================================================ */
+
+/** One day in ms — `to` is inclusive, so it stretches to the end of that day. */
+const DAY_MS = 86400000;
+
+export function inDateRange(value, from, to) {
+  if (!from && !to) return true;
+  const t = parseDateValue(value);
+  if (t === null) return false;
+  if (from) {
+    const f = parseDateValue(from);
+    if (f !== null && t < f) return false;
+  }
+  if (to) {
+    const e = parseDateValue(to);
+    if (e !== null && t >= e + DAY_MS) return false;
+  }
+  return true;
+}
+
+/** Documents whose invoice date falls inside the window. */
+export function filterByDateRange(docs, from, to) {
+  if (!from && !to) return docs;
+  return docs.filter((d) => inDateRange(d.invoiceDate, from, to));
+}
+
+/**
+ * Revenue split by item sub-type across a set of tax invoices.
+ *
+ * An invoice can carry several line items with different sub-types (a renewal
+ * plus a set-up fee, say) while payment arrives as one figure, so each item is
+ * credited its share of the money received in proportion to what it was billed.
+ * Returns rows sorted by revenue, highest first.
+ */
+export function revenueBySubType(docs) {
+  const rows = new Map();
+  for (const d of docs) {
+    if (!d || d.docType !== 'invoice') continue;
+    const docTotal = round2(d.totalAmount);
+    const received = receivedOf(d);
+    const items = (Array.isArray(d.items) && d.items.length > 0)
+      ? d.items
+      : [{ subType: d.subType, totalAmount: d.totalAmount }];
+    for (const it of items) {
+      const label = String(it.subType || 'Unspecified').trim() || 'Unspecified';
+      const billed = round2(it.totalAmount);
+      // Split evenly when the totals give nothing to weigh against.
+      const share = docTotal > MONEY_EPS ? billed / docTotal : 1 / items.length;
+      const row = rows.get(label) || { subType: label, billed: 0, revenue: 0, count: 0 };
+      row.billed += billed;
+      row.revenue += received * share;
+      row.count += 1;
+      rows.set(label, row);
+    }
+  }
+  return [...rows.values()]
+    .map((r) => ({ ...r, billed: round2(r.billed), revenue: round2(r.revenue) }))
+    .sort((a, b) => b.revenue - a.revenue || b.billed - a.billed);
+}

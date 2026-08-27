@@ -2,9 +2,11 @@ import { useMemo, useRef, useState } from 'react';
 import { useApp } from '../AppContext';
 import { REGION_TABS } from '../constants';
 import {
-  branchLabel, filterByUserBranch, filterClientsByUserBranch, fmtDate, fmtMoneyForRegion,
-  outstandingOf, parseDateValue, receivedOf, regionOf, round2, statusBadgeOf, visibleRegionsForUser
+  branchLabel, filterByDateRange, filterByUserBranch, filterClientsByUserBranch, fmtDate,
+  fmtMoneyForRegion, outstandingOf, parseDateValue, receivedOf, regionOf, revenueBySubType,
+  round2, statusBadgeOf, visibleRegionsForUser
 } from '../utils';
+import DateRangeFilter from './DateRangeFilter';
 import SortableTh, { sortRows, useSort } from './SortableTh';
 
 const RECENT_ACCESSORS = {
@@ -30,6 +32,8 @@ const RECENT_COLUMNS = [
 export default function Dashboard({ onOpenTds, onViewUser, onNavigate, onDownloadBackup, onLoadBackup }) {
   const { invoices, clients, users, currentUser } = useApp();
   const [selectedRegion, setSelectedRegion] = useState('all');
+  // Invoice-date window applied to every figure on this page. Empty = all time.
+  const [range, setRange] = useState({ from: '', to: '' });
   const backupFileRef = useRef(null);
   // No default column — the table opens in "most recently created first" order.
   const { sort, toggle, setDir } = useSort(null);
@@ -47,12 +51,14 @@ export default function Dashboard({ onOpenTds, onViewUser, onNavigate, onDownloa
     return d.branch !== 'dubai';
   };
 
-  // Apply the CURRENT USER'S branch access first, then the region filter.
-  // Admins see everything. Non-admins are limited to their allowed branches.
+  // Apply the CURRENT USER'S branch access first, then the region filter, then
+  // the date window. Reconciliation still reads the FULL document set below, so
+  // narrowing the view never makes a proforma look unpaid.
   const userScoped = filterByUserBranch(invoices, currentUser);
-  const all = userScoped.filter(belongsToRegion);
+  const all = filterByDateRange(userScoped.filter(belongsToRegion), range.from, range.to);
   const inv = all.filter((d) => d.docType === 'invoice');
   const pro = all.filter((d) => d.docType === 'proforma');
+  const rangeActive = !!(range.from || range.to);
   // Revenue is the money actually received on tax invoices, so a part payment
   // counts for exactly what came in. Pending amounts are derived per document: a
   // proforma stops being pending for whatever its tax invoices already cover, so
@@ -86,13 +92,21 @@ export default function Dashboard({ onOpenTds, onViewUser, onNavigate, onDownloa
   // Client count filtered strictly by region — the Dubai tab ONLY counts clients
   // with at least one Dubai document, and never falls back to the India list.
   let clientCount;
-  if (region === 'all') {
+  if (rangeActive) {
+    // A window is in force — count only the clients billed inside it.
+    clientCount = new Set(all.map((d) => d.clientId).filter(Boolean)).size;
+  } else if (region === 'all') {
     // "All" tab: count clients whose data is visible to this user
     clientCount = filterClientsByUserBranch(clients, invoices, currentUser).length;
   } else {
     // Region-specific tab: unique clients appearing in the region-filtered docs
     clientCount = new Set(all.map((d) => d.clientId).filter(Boolean)).size;
   }
+
+  // Revenue split across the item sub-types billed in the current selection.
+  const subTypeRows = useMemo(() => revenueBySubType(inv), [inv]);
+  const subTypeTop = subTypeRows.length ? subTypeRows[0].revenue : 0;
+  const subTypeTotal = round2(subTypeRows.reduce((s, r) => s + r.revenue, 0));
 
   const taxLabel = region === 'dubai' ? 'Total VAT Collected' : 'Total GST Collected';
   const taxMeta = region === 'dubai' ? 'VAT @ 5% (Dubai)' : 'CGST+SGST+IGST';
@@ -155,8 +169,11 @@ export default function Dashboard({ onOpenTds, onViewUser, onNavigate, onDownloa
     () => ({ ...RECENT_ACCESSORS, status: (d) => statusBadgeOf(d, invoices).label }),
     [invoices]
   );
+  // Normally the 8 newest; with a window in force the point is to see what the
+  // window actually contains, so show far more of it.
+  const recentLimit = rangeActive ? 50 : 8;
   const recent = sortRows(
-    [...all].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)).slice(0, 8),
+    [...all].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)).slice(0, recentLimit),
     sort,
     recentAccessors
   );
@@ -195,6 +212,15 @@ export default function Dashboard({ onOpenTds, onViewUser, onNavigate, onDownloa
         ))}
       </div>
 
+      {/* Date window — narrows every card below and the tables that follow */}
+      <DateRangeFilter
+        from={range.from} to={range.to} onChange={setRange}
+        label="Invoice date"
+        count={inv.length + pro.length}
+        noun={'documents · ' + inv.length + ' tax invoice' + (inv.length === 1 ? '' : 's')
+          + ' · ' + pro.length + ' proforma' + (pro.length === 1 ? '' : 's')}
+      />
+
       <div className="stats-grid">
         {stats.map((s, i) => (
           <div key={i} className={'stat-card ' + s.cls + (s.onClick ? ' clickable' : '')} onClick={s.onClick}>
@@ -206,7 +232,70 @@ export default function Dashboard({ onOpenTds, onViewUser, onNavigate, onDownloa
       </div>
 
       <div className="card">
-        <div className="card-title">Recent Documents</div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
+          <div className="card-title" style={{ marginBottom: 0 }}>Revenue by Sub-type</div>
+          <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+            {money(subTypeTotal)} received across {subTypeRows.length} sub-type{subTypeRows.length === 1 ? '' : 's'}
+          </div>
+        </div>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Sub-type</th>
+                <th>Line Items</th>
+                <th>Billed</th>
+                <th>Revenue</th>
+                <th>Share of Revenue</th>
+              </tr>
+            </thead>
+            <tbody>
+              {subTypeRows.length === 0 ? (
+                <tr><td colSpan={5}>
+                  <div className="empty-state">
+                    <div className="empty-state-icon">📊</div>
+                    <div className="empty-state-title">No tax invoices in this selection</div>
+                    <div className="empty-state-text">Widen the date range to see the sub-type breakdown.</div>
+                  </div>
+                </td></tr>
+              ) : subTypeRows.map((r) => {
+                const share = subTypeTotal > 0 ? (r.revenue / subTypeTotal) * 100 : 0;
+                return (
+                  <tr key={r.subType}>
+                    <td><strong>{r.subType}</strong></td>
+                    <td>{r.count}</td>
+                    <td>{money(r.billed)}</td>
+                    <td><strong>{money(r.revenue)}</strong></td>
+                    <td style={{ minWidth: 160 }}>
+                      <div className="subtype-share">{share.toFixed(1)}%</div>
+                      <div className="subtype-bar">
+                        <span style={{ width: (subTypeTop > 0 ? (r.revenue / subTypeTop) * 100 : 0) + '%' }} />
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 10, lineHeight: 1.6 }}>
+          Revenue is the money received on tax invoices. An invoice carrying several sub-types splits its
+          receipts between them in proportion to what each line was billed, so the rows always add up to
+          Total Revenue.
+        </div>
+      </div>
+
+      <div className="card">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
+          <div className="card-title" style={{ marginBottom: 0 }}>
+            {rangeActive ? 'Documents in This Range' : 'Recent Documents'}
+          </div>
+          {all.length > recentLimit && (
+            <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+              Showing {recentLimit} of {all.length} — open Invoices or Proforma for the full list
+            </div>
+          )}
+        </div>
         <div className="table-wrap">
           <table>
             <thead>

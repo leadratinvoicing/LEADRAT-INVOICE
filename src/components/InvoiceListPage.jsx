@@ -2,9 +2,10 @@ import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useApp } from '../AppContext';
 import { BRANCHES } from '../constants';
 import {
-  branchLabel, filterByUserBranch, fmtDate, fmtMoneyForRegion, MONEY_EPS, parseDateValue,
-  pendingOf, proformaState, receivedOf, regionOf, statusBadgeOf
+  branchLabel, filterByDateRange, filterByUserBranch, fmtDate, fmtMoneyForRegion, MONEY_EPS,
+  parseDateValue, pendingOf, proformaState, receivedOf, regionOf, statusBadgeOf
 } from '../utils';
+import DateRangeFilter from './DateRangeFilter';
 import SortableTh, { sortRows, useSort } from './SortableTh';
 
 /**
@@ -24,6 +25,8 @@ export default function InvoiceListPage({
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState(initialStatus || '');
   const [branch, setBranch] = useState(initialRegion || '');
+  // Invoice-date window — both bounds optional, empty means all time.
+  const [range, setRange] = useState({ from: '', to: '' });
   // Newest first by default, matching how the list behaved before sorting existed.
   const { sort, toggle, setDir } = useSort('invoiceDate', 'desc');
 
@@ -86,7 +89,11 @@ export default function InvoiceListPage({
   // 'india' is the two Indian branches together; anything else is a single branch.
   if (branch === 'india') list = list.filter((d) => d.branch !== 'dubai');
   else if (branch) list = list.filter((d) => d.branch === branch);
+  list = filterByDateRange(list, range.from, range.to);
   list = sortRows(list, sort, accessors);
+
+  // Headline figures for whatever the filters currently select.
+  const rangeTotal = list.reduce((acc, d) => acc + (+d.totalAmount || 0), 0);
 
   return (
     <div className="page show">
@@ -129,6 +136,14 @@ export default function InvoiceListPage({
           {BRANCH_FILTERS.map((b) => <option key={b.value} value={b.value}>{b.label}</option>)}
         </select>
       </div>
+
+      <DateRangeFilter
+        from={range.from} to={range.to} onChange={setRange}
+        label="Invoice date"
+        count={list.length}
+        noun={(isInvoice ? 'tax invoice' : 'proforma') + (list.length === 1 ? '' : 's') +
+          ' raised · ' + fmtMoneyForRegion(rangeTotal, branch === 'dubai' ? 'dubai' : 'india') + ' billed'}
+      />
 
       <div className="table-wrap">
         <table>

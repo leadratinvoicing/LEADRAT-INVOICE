@@ -234,3 +234,21 @@ tr.editor-row>td{padding:0;background:#F9FAFB;border-bottom:2px solid var(--bran
 .boot-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:14px}
 .toast-stack{position:fixed;top:20px;right:20px;z-index:2000;display:flex;flex-direction:column;gap:10px}
 .toast-stack .toast{position:static}
+
+/* ===== DATE RANGE FILTER ===== */
+.date-range{background:#fff;border:1px solid var(--border);border-radius:10px;padding:10px 14px;margin-bottom:14px}
+.date-range-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.date-range-label{font-size:13px;font-weight:600;color:var(--text);margin-right:2px}
+.date-range-input{width:auto;min-width:150px;padding:7px 10px;font-size:13px}
+.date-range-sep{color:var(--muted);font-size:13px}
+.date-range-preset{padding:6px 11px;border-radius:20px;font-size:12px;font-weight:500;color:var(--muted);background:var(--bg);border:1px solid var(--border);transition:all 0.15s}
+.date-range-preset:hover{background:var(--brand-light);color:var(--brand-dark);border-color:var(--brand)}
+.date-range-preset.active{background:var(--brand);color:#fff;border-color:var(--brand)}
+.date-range-preset.clear{color:var(--danger);border-color:#FECACA;background:#FEF2F2}
+.date-range-preset.clear:hover{background:#FEE2E2;color:#B91C1C;border-color:var(--danger)}
+.date-range-summary{font-size:12px;color:var(--muted);margin-top:7px}
+
+/* ===== SUB-TYPE REVENUE BREAKDOWN ===== */
+.subtype-bar{height:6px;border-radius:3px;background:var(--border);overflow:hidden;margin-top:5px;min-width:60px}
+.subtype-bar>span{display:block;height:100%;background:var(--brand);border-radius:3px}
+.subtype-share{font-size:11px;color:var(--muted);white-space:nowrap}

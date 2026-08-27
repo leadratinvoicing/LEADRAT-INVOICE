@@ -7,7 +7,7 @@ import {
   PAYMENT_MODES, SUBTYPE_OPTIONS, VALIDITY_OPTIONS
 } from '../constants';
 import {
-  dateToInput, fmtMoneyForRegion, MONEY_EPS, nextDocNumber, proformaState, receivedOf, regionOf, round2
+  dateToInput, fmtMoneyForRegion, MONEY_EPS, nextDocNumber, proformaState, regionOf, round2
 } from '../utils';
 
 function blankItem() {
@@ -79,7 +79,6 @@ export default function InvoiceModal({
   const [tdsStatus, setTdsStatus] = useState('pending');
   const [payMode, setPayMode] = useState('UPI');
   const [status, setStatus] = useState('paid');
-  const [received, setReceived] = useState('');
   const [outstanding, setOutstanding] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [proformaDueDate, setProformaDueDate] = useState('');
@@ -161,12 +160,6 @@ export default function InvoiceModal({
       setTdsStatus(d.tdsStatus || 'pending');
       setPayMode(d.paymentMode || (b === 'dubai' ? 'BANK TRANSFER' : 'UPI'));
       setStatus(d.docType === 'proforma' ? 'due' : (d.status || 'paid'));
-      // Receipts are stored as "amount received"; older documents only recorded
-      // the outstanding balance, which receivedOf() back-derives.
-      // Only meaningful while a balance is outstanding — a cleared invoice is
-      // received in full by definition, and the field stays hidden.
-      const rec = (d.docType === 'proforma' || d.status !== 'due') ? 0 : receivedOf(d);
-      setReceived(rec ? String(rec) : '');
       // The balance is typed by hand, so it is loaded back exactly as saved.
       const out = (d.docType === 'proforma' || d.status !== 'due') ? '' : d.amountDueOutstanding;
       setOutstanding(out === undefined || out === null || out === '' ? '' : String(out));
@@ -188,7 +181,7 @@ export default function InvoiceModal({
       setTdsStatus('pending');
       setPayMode(initialDocType === 'proforma' ? 'NEFT' : 'UPI');
       setStatus(initialDocType === 'proforma' ? 'due' : 'paid');
-      setReceived(''); setOutstanding(''); setDueDate(''); setProformaDueDate('');
+      setOutstanding(''); setDueDate(''); setProformaDueDate('');
     }
   }, [open, editingDoc, prefillDoc, initialDocType]);
 
@@ -271,14 +264,14 @@ export default function InvoiceModal({
     };
   }, [items, gstRate, gstType, tdsRate, isDubai]);
 
-  /* ---------- Receipt vs balance ----------
-     Under "Amount Due" both figures are entered by hand and stand on their own:
-     neither is derived from the other, and neither is tied to the item total.
-     "Payments Cleared" is the one exception — it means the invoice total came
-     in, by definition. */
+  /* ---------- Balance and revenue ----------
+     Balance Payment is the one figure entered by hand, and it is what the
+     invoice prints as Amount Due. Nothing constrains it against the item total.
+     Revenue is what is left over — the invoice total less that balance — and
+     "Payments Cleared" means the total came in, by definition. */
   const totalVal = parseFloat(calc.total) || 0;
-  const receivedVal = isProforma ? 0 : (status === 'due' ? Math.max(0, round2(received)) : totalVal);
   const outstandingVal = (isProforma || status !== 'due') ? 0 : Math.max(0, round2(outstanding));
+  const receivedVal = isProforma ? 0 : (status === 'due' ? Math.max(0, round2(totalVal - outstandingVal)) : totalVal);
 
   // Live reconciliation figures for the proforma this invoice is raised against.
   const convertState = useMemo(
@@ -882,13 +875,6 @@ export default function InvoiceModal({
 
       {!isProforma && status === 'due' && (
         <div className="form-grid">
-          <div className="form-group">
-            <label className="form-label">Amount Received{isDubai ? ' (AED)' : ''}</label>
-            <input ref={bind('frmReceived')} type="number" step="0.01" min="0" className={cls('frmReceived')}
-              placeholder="0.00 — leave empty if nothing received yet"
-              value={received} onChange={(e) => { setReceived(e.target.value); setBadField(null); }} />
-            <div className="password-hint">Part payment the client has already transacted · counts towards Total Revenue</div>
-          </div>
           <div className="form-group">
             <label className="form-label">
               Balance Payment{isDubai ? ' (AED)' : ''} <span className="req">*</span>
