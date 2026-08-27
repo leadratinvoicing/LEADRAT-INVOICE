@@ -343,8 +343,10 @@ export function invoicesForProforma(invoices, proformaId) {
 export function receivedOf(d) {
   if (!d || d.docType === 'proforma') return 0;
   const total = round2(d.totalAmount);
+  // Recorded by hand on the form, so it is taken at face value — capping it at
+  // the item total would silently contradict what was entered and printed.
   if (d.receivedAmount !== undefined && d.receivedAmount !== null && d.receivedAmount !== '') {
-    return Math.max(0, Math.min(round2(d.receivedAmount), total));
+    return Math.max(0, round2(d.receivedAmount));
   }
   // Documents saved before receipts were tracked: "cleared" means paid in full,
   // and an outstanding amount below the total implies the rest came in.

@@ -272,10 +272,10 @@ export default function InvoiceModal({
   }, [items, gstRate, gstType, tdsRate, isDubai]);
 
   /* ---------- Receipt vs balance ----------
-     Both are entered by hand: what came in counts towards revenue, and the
-     balance is whatever the invoice should print as Amount Due. They are not
-     derived from each other — a part payment is often settled on terms that
-     don't reduce to a simple subtraction. */
+     Under "Amount Due" both figures are entered by hand and stand on their own:
+     neither is derived from the other, and neither is tied to the item total.
+     "Payments Cleared" is the one exception — it means the invoice total came
+     in, by definition. */
   const totalVal = parseFloat(calc.total) || 0;
   const receivedVal = isProforma ? 0 : (status === 'due' ? Math.max(0, round2(received)) : totalVal);
   const outstandingVal = (isProforma || status !== 'due') ? 0 : Math.max(0, round2(outstanding));
@@ -412,18 +412,11 @@ export default function InvoiceModal({
     } else {
       if (!payMode) return fail('frmPayMode', 'Payment mode is required');
       if (status === 'due') {
-        if (receivedVal > totalVal + MONEY_EPS) {
-          return fail('frmReceived', 'Amount received cannot be more than the invoice total');
-        }
-        if (totalVal > 0 && receivedVal >= totalVal - MONEY_EPS) {
-          return fail('frmReceived', 'The full amount is received — set Status to "Payments Cleared"');
-        }
-        // Typed by hand rather than derived, so it has to be there to print.
+        // Amount Received and Balance Payment are both typed by hand and are
+        // deliberately NOT checked against the item total — a part payment is
+        // often settled on terms the line items don't reduce to.
         if (String(outstanding).trim() === '') {
           return fail('frmOutstanding', 'Balance payment is required');
-        }
-        if (outstandingVal > totalVal + MONEY_EPS) {
-          return fail('frmOutstanding', 'Balance payment cannot be more than the invoice total');
         }
         if (!dueDate) return fail('frmDueDate', 'Payment due date is required');
       }
