@@ -254,33 +254,36 @@ export default function InvoiceListPage({
                       {!isInvoice && (
                         pro.unbilled > MONEY_EPS ? (
                           <button
-                            className="icon-btn" style={{ background: '#DBEAFE', color: '#1E40AF' }}
-                            onClick={() => onConvert(d.id)}
-                            title={'Raise a tax invoice for ' + money(pro.unbilled) + ' not yet invoiced on this proforma'}
+                            className="icon-btn convert" onClick={() => onConvert(d.id)}
+                            title={(pro.invoiced > MONEY_EPS ? 'Convert balance — raise' : 'Convert — raise') +
+                              ' a tax invoice for ' + money(pro.unbilled) + ' not yet invoiced on this proforma'}
                           >
-                            🔄 {pro.invoiced > MONEY_EPS ? 'Convert Balance' : 'Convert'}
+                            🔄
                           </button>
                         ) : (
-                          <span className="badge badge-paid" title={'Reconciled to tax invoice ' + (linkedNos || '—')}>
-                            ✓ Invoiced
+                          <span className="icon-btn" style={{ color: 'var(--success)', cursor: 'default' }}
+                            title={'Fully invoiced · reconciled to ' + (linkedNos || '—')}>
+                            ✓
                           </span>
                         )
                       )}
                       {canAssign && (
                         <button
-                          className="icon-btn"
-                          style={d.assignedTo ? { background: '#DBEAFE', color: '#1E40AF' } : undefined}
+                          className={'icon-btn' + (d.assignedTo ? ' assigned' : '')}
                           onClick={() => onAssign(d.id)}
                           title={d.assignedTo ? 'Assigned to ' + assigneeLabel(d, users) + ' — click to change' : 'Assign to a user'}
                         >
                           👤
                         </button>
                       )}
-                      <button className="icon-btn" style={{ background: '#EDE9FE', color: '#5B21B6' }}
-                        onClick={() => onPreview(d.id)} title="Preview before downloading">👁 Preview</button>
-                      <button className="icon-btn pdf" onClick={() => onDownload(d.id)} title="Download Word document">📥 Word</button>
-                      <button className="icon-btn pdf" onClick={() => onDownloadPdf(d.id)} title="Download PDF document">📄 PDF</button>
-                      <button className="icon-btn edit" onClick={() => onEdit(d.id)} title={isEditingRow ? 'Close editor' : 'Edit'}>✏️</button>
+                      <button className="icon-btn preview" onClick={() => onPreview(d.id)}
+                        title="Preview before downloading">👁</button>
+                      <button className="icon-btn word" onClick={() => onDownload(d.id)}
+                        title="Download Word document">📘</button>
+                      <button className="icon-btn pdf" onClick={() => onDownloadPdf(d.id)}
+                        title="Download PDF document">📕</button>
+                      <button className="icon-btn edit" onClick={() => onEdit(d.id)}
+                        title={isEditingRow ? 'Close editor' : 'Edit'}>✏️</button>
                       <button className="icon-btn delete" onClick={() => onDelete(d.id)} title="Delete">🗑</button>
                     </div>
                   </td>

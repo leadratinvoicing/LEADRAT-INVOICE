@@ -171,8 +171,8 @@ export default function UsersPage({ onView, onEdit, onDelete, onCreate }) {
                   <td style={{ fontSize: 12 }}>{joined}</td>
                   <td>
                     <div className="actions-cell">
-                      <button className="icon-btn pdf" onClick={() => onView(u.email)} title="View full details">👁 View</button>
-                      <button className="icon-btn edit" onClick={() => onEdit(u.email)} title="Edit user &amp; permissions">✏️ Edit</button>
+                      <button className="icon-btn preview" onClick={() => onView(u.email)} title="View full details">👁</button>
+                      <button className="icon-btn edit" onClick={() => onEdit(u.email)} title="Edit user &amp; permissions">✏️</button>
                       <button className="icon-btn delete" onClick={() => onDelete(u.email)} title="Delete user">🗑</button>
                     </div>
                   </td>

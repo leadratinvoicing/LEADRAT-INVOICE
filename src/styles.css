@@ -109,8 +109,8 @@ input,select,textarea{font-family:inherit;font-size:14px}
 /* ===== TABLES ===== */
 .table-wrap{overflow-x:auto;background:#fff;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,0.05)}
 table{width:100%;border-collapse:collapse;font-size:13px}
-th{background:#F9FAFB;padding:12px;text-align:left;font-weight:600;color:var(--muted);text-transform:uppercase;font-size:11px;letter-spacing:0.4px;border-bottom:1px solid var(--border);white-space:nowrap}
-td{padding:12px;border-bottom:1px solid var(--border);vertical-align:middle}
+th{background:#F9FAFB;padding:9px 10px;text-align:left;font-weight:600;color:var(--muted);text-transform:uppercase;font-size:11px;letter-spacing:0.4px;border-bottom:1px solid var(--border);white-space:nowrap}
+td{padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:middle}
 tr:hover{background:#FAFBFC}
 tr:last-child td{border-bottom:none}
 th.sortable{cursor:pointer;user-select:none}
@@ -128,12 +128,20 @@ th.sortable.sorted{color:var(--brand-dark)}
 .badge-due{background:#FEE2E2;color:#991B1B}
 /* Part paid / part invoiced — between cleared and due */
 .badge-partial{background:#FEF3C7;color:#92400E}
-.actions-cell{display:flex;gap:6px;justify-content:flex-end}
-.icon-btn{padding:6px 8px;border-radius:6px;color:var(--muted);transition:all 0.2s;font-size:13px}
+.actions-cell{display:flex;gap:3px;justify-content:flex-end;align-items:center}
+/* Square, icon-only buttons — the label lives in the title tooltip so the
+   actions column stays narrow enough for the table to fit one screen. */
+.icon-btn{width:28px;height:28px;padding:0;border-radius:6px;color:var(--muted);transition:all 0.15s;font-size:14px;line-height:1;display:inline-flex;align-items:center;justify-content:center;flex:0 0 28px}
 .icon-btn:hover{background:var(--bg);color:var(--text)}
 .icon-btn.edit:hover{color:#3B82F6;background:#EFF6FF}
 .icon-btn.delete:hover{color:var(--danger);background:#FEE2E2}
-.icon-btn.pdf:hover{color:var(--brand-dark);background:var(--brand-light)}
+.icon-btn.pdf:hover{color:#B91C1C;background:#FEE2E2}
+.icon-btn.word:hover{color:#1D4ED8;background:#DBEAFE}
+.icon-btn.preview{background:#EDE9FE;color:#5B21B6}
+.icon-btn.preview:hover{background:#DDD6FE}
+.icon-btn.convert{background:#DBEAFE;color:#1E40AF}
+.icon-btn.convert:hover{background:#BFDBFE}
+.icon-btn.assigned{background:#DBEAFE;color:#1E40AF}
 
 /* ===== FORM GRID ===== */
 .form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}
