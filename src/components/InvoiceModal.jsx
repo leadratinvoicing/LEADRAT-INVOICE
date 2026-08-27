@@ -80,6 +80,7 @@ export default function InvoiceModal({
   const [payMode, setPayMode] = useState('UPI');
   const [status, setStatus] = useState('paid');
   const [received, setReceived] = useState('');
+  const [outstanding, setOutstanding] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [proformaDueDate, setProformaDueDate] = useState('');
   const [badField, setBadField] = useState(null);
@@ -166,6 +167,9 @@ export default function InvoiceModal({
       // received in full by definition, and the field stays hidden.
       const rec = (d.docType === 'proforma' || d.status !== 'due') ? 0 : receivedOf(d);
       setReceived(rec ? String(rec) : '');
+      // The balance is typed by hand, so it is loaded back exactly as saved.
+      const out = (d.docType === 'proforma' || d.status !== 'due') ? '' : d.amountDueOutstanding;
+      setOutstanding(out === undefined || out === null || out === '' ? '' : String(out));
       setDueDate(dateToInput(d.dueDate));
       setProformaDueDate(dateToInput(d.dueDate));
     } else {
@@ -184,7 +188,7 @@ export default function InvoiceModal({
       setTdsStatus('pending');
       setPayMode(initialDocType === 'proforma' ? 'NEFT' : 'UPI');
       setStatus(initialDocType === 'proforma' ? 'due' : 'paid');
-      setReceived(''); setDueDate(''); setProformaDueDate('');
+      setReceived(''); setOutstanding(''); setDueDate(''); setProformaDueDate('');
     }
   }, [open, editingDoc, prefillDoc, initialDocType]);
 
@@ -268,11 +272,13 @@ export default function InvoiceModal({
   }, [items, gstRate, gstType, tdsRate, isDubai]);
 
   /* ---------- Receipt vs balance ----------
-     The client's transaction drives both figures: what came in counts towards
-     revenue, and the remainder is the balance that stays under "due". */
+     Both are entered by hand: what came in counts towards revenue, and the
+     balance is whatever the invoice should print as Amount Due. They are not
+     derived from each other — a part payment is often settled on terms that
+     don't reduce to a simple subtraction. */
   const totalVal = parseFloat(calc.total) || 0;
   const receivedVal = isProforma ? 0 : (status === 'due' ? Math.max(0, round2(received)) : totalVal);
-  const outstandingVal = isProforma ? 0 : Math.max(0, round2(totalVal - receivedVal));
+  const outstandingVal = (isProforma || status !== 'due') ? 0 : Math.max(0, round2(outstanding));
 
   // Live reconciliation figures for the proforma this invoice is raised against.
   const convertState = useMemo(
@@ -411,6 +417,13 @@ export default function InvoiceModal({
         }
         if (totalVal > 0 && receivedVal >= totalVal - MONEY_EPS) {
           return fail('frmReceived', 'The full amount is received — set Status to "Payments Cleared"');
+        }
+        // Typed by hand rather than derived, so it has to be there to print.
+        if (String(outstanding).trim() === '') {
+          return fail('frmOutstanding', 'Balance payment is required');
+        }
+        if (outstandingVal > totalVal + MONEY_EPS) {
+          return fail('frmOutstanding', 'Balance payment cannot be more than the invoice total');
         }
         if (!dueDate) return fail('frmDueDate', 'Payment due date is required');
       }
@@ -884,10 +897,13 @@ export default function InvoiceModal({
             <div className="password-hint">Part payment the client has already transacted · counts towards Total Revenue</div>
           </div>
           <div className="form-group">
-            <label className="form-label">Outstanding Amount Due — auto</label>
-            <input type="number" step="0.01" className="form-input" value={outstandingVal.toFixed(2)}
-              readOnly style={{ background: '#F3F4F6', cursor: 'not-allowed', fontWeight: 600 }} />
-            <div className="password-hint">Total − Amount Received · the balance shown under Due status</div>
+            <label className="form-label">
+              Balance Payment{isDubai ? ' (AED)' : ''} <span className="req">*</span>
+            </label>
+            <input ref={bind('frmOutstanding')} type="number" step="0.01" min="0" className={cls('frmOutstanding')}
+              placeholder="0.00" style={{ fontWeight: 600 }}
+              value={outstanding} onChange={(e) => { setOutstanding(e.target.value); setBadField(null); }} />
+            <div className="password-hint">Entered manually · this is the Amount Due printed on the invoice</div>
           </div>
           <div className="form-group">
             <label className="form-label">Payment Due Date <span className="req">*</span></label>
