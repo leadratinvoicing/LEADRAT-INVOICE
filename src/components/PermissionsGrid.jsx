@@ -17,7 +17,7 @@ export default function PermissionsGrid({ perms, onToggle }) {
             <div style={{ fontWeight: 600, marginBottom: 8, color: 'var(--text)' }}>{mod.label}</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14 }}>
               {mod.actions.map((act) => (
-                <label key={act} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+                <label key={act} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10.8, cursor: 'pointer' }}>
                   <input
                     type="checkbox"
                     checked={!!modPerm[act]}

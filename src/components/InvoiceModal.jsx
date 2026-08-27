@@ -527,10 +527,10 @@ export default function InvoiceModal({
     <>
       {isConverting && convertState && (
         <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 8, padding: 14, marginBottom: 16 }}>
-          <div style={{ fontWeight: 700, color: '#1E40AF', marginBottom: 8, fontSize: 13 }}>
+          <div style={{ fontWeight: 700, color: '#1E40AF', marginBottom: 8, fontSize: 10.8 }}>
             🔄 Reconciling proforma {convertFrom.invoiceNo} · {convertFrom.clientName}
           </div>
-          <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', fontSize: 12, color: '#1E3A8A' }}>
+          <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', fontSize: 10, color: '#1E3A8A' }}>
             <span>Proforma total: <strong>{money(convertState.total)}</strong></span>
             {convertState.invoiced > MONEY_EPS && (
               <span>Already invoiced: <strong>{money(convertState.invoiced)}</strong></span>
@@ -541,7 +541,7 @@ export default function InvoiceModal({
             <span>Received now: <strong>{money(receivedVal)}</strong></span>
             <span>Proforma pending after: <strong>{money(proformaPendingAfter)}</strong></span>
           </div>
-          <div style={{ fontSize: 11, color: '#1E3A8A', marginTop: 8, lineHeight: 1.6 }}>
+          <div style={{ fontSize: 9.1, color: '#1E3A8A', marginTop: 8, lineHeight: 1.6 }}>
             Edit the items and the Payment Status below to match the transaction the client actually made.
             {' '}{money(receivedVal)} moves into Total Revenue and comes off the proforma&apos;s pending amount
             {outstandingVal > MONEY_EPS ? '; ' + money(outstandingVal) + ' stays as a balance under Due status' : ''}
@@ -550,7 +550,7 @@ export default function InvoiceModal({
               : '. ' + convertFrom.invoiceNo + ' is then settled in full'}.
           </div>
           {overInvoicing && (
-            <div style={{ fontSize: 11, color: '#92400E', background: '#FEF3C7', borderRadius: 6, padding: '6px 10px', marginTop: 8 }}>
+            <div style={{ fontSize: 9.1, color: '#92400E', background: '#FEF3C7', borderRadius: 6, padding: '6px 10px', marginTop: 8 }}>
               ⚠ This invoice ({money(totalVal)}) is larger than the amount still to be invoiced on the proforma ({money(convertState.unbilled)}).
             </div>
           )}
@@ -684,14 +684,14 @@ export default function InvoiceModal({
 
       <hr className="section-divider" />
       <div className="card-title">Item Details</div>
-      <div style={{ background: 'var(--brand-light)', padding: '10px 12px', borderRadius: 6, marginBottom: 12, fontSize: 12, color: 'var(--brand-dark)' }}>
+      <div style={{ background: 'var(--brand-light)', padding: '10px 12px', borderRadius: 6, marginBottom: 12, fontSize: 10, color: 'var(--brand-dark)' }}>
         💡 Enter <strong>Total Amount</strong> (incl. {taxLabel}) for each item. Net Amount and {taxLabel} are auto-calculated. You can add multiple line items (e.g., CRM Renewal + Set-Up Fee on the same invoice).
       </div>
       <div>
         {items.map((it, idx) => (
           <div key={idx} className="card" style={{ marginBottom: 12, background: '#FAFBFC', border: '1px solid #E5E7EB', padding: 14, position: 'relative' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-              <strong style={{ color: 'var(--brand-dark)', fontSize: 13 }}>Item {idx + 1}</strong>
+              <strong style={{ color: 'var(--brand-dark)', fontSize: 10.8 }}>Item {idx + 1}</strong>
               {items.length > 1 && (
                 <button type="button" className="icon-btn delete" onClick={() => removeItemRow(idx)} title="Remove this item">🗑</button>
               )}
@@ -782,7 +782,7 @@ export default function InvoiceModal({
 
       <hr className="section-divider" />
       <div className="card-title">Amount Calculation</div>
-      <div style={{ background: 'var(--brand-light)', padding: 12, borderRadius: 8, marginBottom: 14, fontSize: 13, color: 'var(--brand-dark)' }}>
+      <div style={{ background: 'var(--brand-light)', padding: 12, borderRadius: 8, marginBottom: 14, fontSize: 10.8, color: 'var(--brand-dark)' }}>
         {isDubai
           ? <>💡 <strong>Dubai:</strong> Total Amount is the sum of each item&apos;s Total in AED. Net Amount and VAT @ 5% are back-calculated.</>
           : <>💡 Total Amount is the sum of each item&apos;s Total. Net Amount and GST are back-calculated from Total at the configured GST rate.</>}
@@ -824,7 +824,7 @@ export default function InvoiceModal({
 
       <hr className="section-divider" />
       <div className="card-title">TDS (Tax Deducted at Source)</div>
-      <div style={{ background: '#FEF3C7', padding: '10px 12px', borderRadius: 6, marginBottom: 12, fontSize: 12, color: '#92400E' }}>
+      <div style={{ background: '#FEF3C7', padding: '10px 12px', borderRadius: 6, marginBottom: 12, fontSize: 10, color: '#92400E' }}>
         🔒 TDS information is for internal/back-end records only — it will <strong>not</strong> appear on the invoice PDF.
       </div>
       <div className="form-grid">
@@ -893,7 +893,7 @@ export default function InvoiceModal({
       )}
 
       {!isProforma && status === 'paid' && totalVal > 0 && (
-        <div style={{ background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: 6, padding: '8px 12px', fontSize: 12, color: '#065F46' }}>
+        <div style={{ background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: 6, padding: '8px 12px', fontSize: 10, color: '#065F46' }}>
           ✓ {money(totalVal)} received in full · nothing outstanding on this invoice.
         </div>
       )}

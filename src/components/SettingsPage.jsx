@@ -263,7 +263,7 @@ export default function SettingsPage() {
         <div className="tab-content show">
           <div className="card settings-section">
             <div className="card-title">Company Details (Bill From)</div>
-            <p style={{ fontSize: 12, marginBottom: 10, color: isAdmin ? 'var(--brand-dark)' : 'var(--muted)' }}>
+            <p style={{ fontSize: 10, marginBottom: 10, color: isAdmin ? 'var(--brand-dark)' : 'var(--muted)' }}>
               {isAdmin
                 ? '✏️ You are logged in as admin. Fields below are editable. Changes save on click and apply to all NEW invoices.'
                 : '📌 Company information is locked. To change these values, please contact the system administrator.'}
@@ -329,7 +329,7 @@ export default function SettingsPage() {
                   </div>
                 </div>
                 <hr className="section-divider" />
-                <div className="card-title" style={{ fontSize: 14 }}>Dubai Banking Information (RAK BANK)</div>
+                <div className="card-title" style={{ fontSize: 11.6 }}>Dubai Banking Information (RAK BANK)</div>
                 <div className="form-grid-2">
                   <div className="form-group">
                     <label className="form-label">Bank Name</label>
@@ -383,7 +383,7 @@ export default function SettingsPage() {
             {isAdmin && (
               <div style={{ marginTop: 16 }}>
                 <button className="btn btn-primary" onClick={saveCompanyInfo}>💾 Save Company Info</button>
-                <span style={{ fontSize: 12, color: 'var(--muted)', marginLeft: 10 }}>
+                <span style={{ fontSize: 10, color: 'var(--muted)', marginLeft: 10 }}>
                   Changes apply to all NEW invoices generated after saving.
                 </span>
               </div>
@@ -396,7 +396,7 @@ export default function SettingsPage() {
         <div className="tab-content show">
           <div className="card">
             <div className="card-title">Document Number Series &amp; Format</div>
-            <p style={{ fontSize: 12, marginBottom: 14, color: isAdmin ? 'var(--brand-dark)' : 'var(--muted)' }}>
+            <p style={{ fontSize: 10, marginBottom: 14, color: isAdmin ? 'var(--brand-dark)' : 'var(--muted)' }}>
               {isAdmin
                 ? '✏️ Each series builds its number as PREFIX + counter (zero-padded to the chosen number of digits) + optional SUFFIX. Changes apply to NEW documents only — numbers already issued are never rewritten.'
                 : '📌 Numbering and format are locked. To change these values, please contact the system administrator.'}
@@ -412,7 +412,7 @@ export default function SettingsPage() {
                   <div className="numbering-series-head">
                     <div>
                       <strong>{s.label}</strong>
-                      <span style={{ fontSize: 11, color: 'var(--muted)', marginLeft: 8 }}>
+                      <span style={{ fontSize: 9.1, color: 'var(--muted)', marginLeft: 8 }}>
                         {usedCount} document{usedCount === 1 ? '' : 's'} on this prefix
                       </span>
                     </div>
@@ -477,7 +477,7 @@ export default function SettingsPage() {
               <div style={{ marginTop: 16, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                 <button className="btn btn-primary" onClick={saveNumberingSettings}>💾 Save Numbering &amp; Format</button>
                 <button className="btn btn-secondary" onClick={resetAllSeries}>↩ Reset All to Defaults</button>
-                <span style={{ fontSize: 12, color: 'var(--muted)' }}>
+                <span style={{ fontSize: 10, color: 'var(--muted)' }}>
                   Applies to documents created after saving.
                 </span>
               </div>

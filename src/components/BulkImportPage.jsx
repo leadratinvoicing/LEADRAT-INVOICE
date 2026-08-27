@@ -63,7 +63,7 @@ export default function BulkImportPage({
       {pendingImport && (
         <div className="card">
           <div className="card-title">Import Preview</div>
-          <p style={{ marginBottom: 10, fontSize: 13 }}>
+          <p style={{ marginBottom: 10, fontSize: 10.8 }}>
             <strong>{pendingImport.length}</strong> row{pendingImport.length === 1 ? '' : 's'} detected → will create{' '}
             <strong>{totalInvoices}</strong> invoice{totalInvoices === 1 ? '' : 's'}
             {mergedGroups > 0 && (
@@ -87,11 +87,11 @@ export default function BulkImportPage({
                     <tr key={i} style={isMerge ? { background: '#FEF3C7' } : undefined}>
                       <td>{i + 1}</td>
                       <td><span className={'badge ' + (docType === 'invoice' ? 'badge-invoice' : 'badge-proforma')}>{docType}</span></td>
-                      <td style={{ fontSize: 12 }}>{r.branch || '-'}</td>
+                      <td style={{ fontSize: 10 }}>{r.branch || '-'}</td>
                       <td>
                         {invNo || <em style={{ color: '#dc2626' }}>missing</em>}
                         {isMerge && (
-                          <span style={{ fontSize: 10, background: '#F59E0B', color: '#fff', padding: '1px 4px', borderRadius: 3, marginLeft: 4 }}>
+                          <span style={{ fontSize: 8.3, background: '#F59E0B', color: '#fff', padding: '1px 4px', borderRadius: 3, marginLeft: 4 }}>
                             MERGE
                           </span>
                         )}
@@ -115,12 +115,12 @@ export default function BulkImportPage({
 
       <div className="card">
         <div className="card-title">Excel Format Guide</div>
-        <div style={{ background: 'var(--brand-light)', padding: '10px 12px', borderRadius: 6, marginBottom: 12, fontSize: 12, color: 'var(--brand-dark)' }}>
+        <div style={{ background: 'var(--brand-light)', padding: '10px 12px', borderRadius: 6, marginBottom: 12, fontSize: 10, color: 'var(--brand-dark)' }}>
           💡 <strong>Multi-item invoice merging:</strong> If two or more rows share the same <strong>invoice_no</strong>, they are combined into a single multi-item invoice. All shared fields (client, dates, GSTIN, etc.) come from the FIRST row; each row&apos;s line-item details (description, sub-type, license, validity, amounts) become a separate item.
         </div>
 
-        <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 8 }}><strong>🇮🇳 India template columns:</strong></p>
-        <div style={{ fontSize: 12, lineHeight: 1.7, marginBottom: 14 }}>
+        <p style={{ fontSize: 10.8, color: 'var(--muted)', marginBottom: 8 }}><strong>🇮🇳 India template columns:</strong></p>
+        <div style={{ fontSize: 10, lineHeight: 1.7, marginBottom: 14 }}>
           <strong>doc_type</strong> (invoice / proforma) | <strong>branch</strong> (pune / bengaluru) | <strong>invoice_no</strong> | <strong>invoice_date</strong> (DD/MM/YYYY)<br />
           <strong>client_name</strong> | <strong>client_address</strong> | <strong>client_gstin</strong> | <strong>legal_name</strong> | <strong>hsn_sac</strong> (default 997331)<br />
           <strong>description</strong> | <strong>sub_type</strong> | <strong>payment_date</strong> | <strong>no_of_license</strong> | <strong>validity</strong><br />
@@ -128,8 +128,8 @@ export default function BulkImportPage({
           <strong>payment_mode</strong> | <strong>status</strong> (paid / due) | <strong>amount_due</strong> | <strong>due_date</strong>
         </div>
 
-        <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 8 }}><strong>🇦🇪 Dubai template columns:</strong></p>
-        <div style={{ fontSize: 12, lineHeight: 1.7 }}>
+        <p style={{ fontSize: 10.8, color: 'var(--muted)', marginBottom: 8 }}><strong>🇦🇪 Dubai template columns:</strong></p>
+        <div style={{ fontSize: 10, lineHeight: 1.7 }}>
           <strong>doc_type</strong> (invoice / proforma) | <strong>branch</strong> (always &quot;dubai&quot;) | <strong>invoice_no</strong> | <strong>invoice_date</strong> (DD/MM/YYYY)<br />
           <strong>client_name</strong> | <strong>client_address</strong> | <strong>client_trn</strong> (15-digit or blank) | <strong>legal_name</strong><br />
           <strong>description</strong> | <strong>sub_type</strong> | <strong>payment_date</strong> | <strong>no_of_license</strong> | <strong>validity</strong><br />

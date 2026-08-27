@@ -30,15 +30,15 @@ export default function ClientBulkModal({ open, rows, onClose, onConfirm }) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: 12 }}>
           <div className="stat-card cleared">
             <div className="stat-label">Total Rows</div>
-            <div className="stat-value" style={{ fontSize: 22 }}>{rows.length}</div>
+            <div className="stat-value" style={{ fontSize: 18.3 }}>{rows.length}</div>
           </div>
           <div className="stat-card cleared">
             <div className="stat-label">Valid (will import)</div>
-            <div className="stat-value" style={{ fontSize: 22, color: 'var(--success)' }}>{validCount}</div>
+            <div className="stat-value" style={{ fontSize: 18.3, color: 'var(--success)' }}>{validCount}</div>
           </div>
           <div className="stat-card due">
             <div className="stat-label">Skipped</div>
-            <div className="stat-value" style={{ fontSize: 22, color: 'var(--warning)' }}>{invalidCount}</div>
+            <div className="stat-value" style={{ fontSize: 18.3, color: 'var(--warning)' }}>{invalidCount}</div>
           </div>
         </div>
       </div>
@@ -54,18 +54,18 @@ export default function ClientBulkModal({ open, rows, onClose, onConfirm }) {
           <tbody>
             {rows.map((r, i) => (
               <tr key={i} style={r.valid ? undefined : { background: '#FEF3C7' }}>
-                <td style={{ fontSize: 11, color: '#6B7280' }}>{r.rowNo}</td>
+                <td style={{ fontSize: 9.1, color: '#6B7280' }}>{r.rowNo}</td>
                 <td>{r.name}</td>
                 <td>{r.legalName}</td>
-                <td style={{ fontSize: 12 }}>{r.address}</td>
+                <td style={{ fontSize: 10 }}>{r.address}</td>
                 <td>{r.city}</td>
-                <td style={{ fontSize: 12 }}>{r.email}</td>
-                <td style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{r.phone}</td>
-                <td style={{ fontFamily: 'monospace', fontSize: 12 }}>{r.gstin}</td>
+                <td style={{ fontSize: 10 }}>{r.email}</td>
+                <td style={{ fontSize: 10, whiteSpace: 'nowrap' }}>{r.phone}</td>
+                <td style={{ fontFamily: 'monospace', fontSize: 10 }}>{r.gstin}</td>
                 <td>
                   {r.valid
                     ? <span style={{ color: 'var(--success)', fontWeight: 600 }}>✓ Will import</span>
-                    : <span style={{ color: 'var(--warning)', fontSize: 11 }}>⚠ {r.errors.join('; ')}</span>}
+                    : <span style={{ color: 'var(--warning)', fontSize: 9.1 }}>⚠ {r.errors.join('; ')}</span>}
                 </td>
               </tr>
             ))}

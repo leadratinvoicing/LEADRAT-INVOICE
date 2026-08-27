@@ -133,7 +133,7 @@ export default function CreateUserModal({ open, onClose, onCreated }) {
 
   return (
     <Modal open={open} title="Create User Profile" onClose={onClose} maxWidth={680} footer={footer}>
-      <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 14 }}>
+      <p style={{ fontSize: 10.8, color: 'var(--muted)', marginBottom: 14 }}>
         Creates both the sign-in account and the profile. You stay signed in — the new account is
         registered on a separate connection. Hand the person their username and the initial password below.
       </p>

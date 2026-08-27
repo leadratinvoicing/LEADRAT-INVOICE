@@ -86,12 +86,12 @@ export default function ClientsPage({ initialRegion, onAdd, onEdit, onDelete, on
   /** Nicely-labelled region badge for a client. */
   const regionBadge = (id) => {
     const regs = regionsOf(id);
-    if (!regs || regs.size === 0) return <span style={{ color: 'var(--muted)', fontSize: 11 }}>—</span>;
+    if (!regs || regs.size === 0) return <span style={{ color: 'var(--muted)', fontSize: 9.1 }}>—</span>;
     const parts = [];
     if (regs.has('india')) parts.push(['india', '🇮🇳 India']);
     if (regs.has('dubai')) parts.push(['dubai', '🇦🇪 Dubai']);
     return parts.map(([key, label]) => (
-      <span key={key} style={{ ...REGION_BADGE_STYLE[key], padding: '2px 6px', borderRadius: 10, fontSize: 11, marginRight: 4 }}>
+      <span key={key} style={{ ...REGION_BADGE_STYLE[key], padding: '2px 6px', borderRadius: 10, fontSize: 9.1, marginRight: 4 }}>
         {label}
       </span>
     ));
@@ -157,19 +157,19 @@ export default function ClientsPage({ initialRegion, onAdd, onEdit, onDelete, on
                   <td>
                     <strong>{c.name}</strong>
                     {c.legalName && c.legalName !== c.name && (
-                      <div style={{ fontSize: 11, color: 'var(--muted)' }}>{c.legalName}</div>
+                      <div style={{ fontSize: 9.1, color: 'var(--muted)' }}>{c.legalName}</div>
                     )}
                   </td>
-                  <td style={{ fontSize: 12, fontFamily: 'monospace' }}>{c.gstin || '-'}</td>
+                  <td style={{ fontSize: 10, fontFamily: 'monospace' }}>{c.gstin || '-'}</td>
                   <td>{regionBadge(c.id)}</td>
-                  <td style={{ fontSize: 12 }}>{c.city || '-'}</td>
-                  <td style={{ fontSize: 12 }}>
+                  <td style={{ fontSize: 10 }}>{c.city || '-'}</td>
+                  <td style={{ fontSize: 10 }}>
                     {c.email ? <a href={'mailto:' + c.email} style={{ color: 'var(--brand-dark)' }}>{c.email}</a> : '-'}
                   </td>
-                  <td style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
+                  <td style={{ fontSize: 10, whiteSpace: 'nowrap' }}>
                     {c.phone ? <a href={'tel:' + c.phone.replace(/\s+/g, '')} style={{ color: 'var(--brand-dark)' }}>{c.phone}</a> : '-'}
                   </td>
-                  <td style={{ fontSize: 12, color: 'var(--muted)', maxWidth: 280 }}>
+                  <td style={{ fontSize: 10, color: 'var(--muted)', maxWidth: 280 }}>
                     {addr.substring(0, 80)}{addr.length > 80 ? '…' : ''}
                   </td>
                   <td>{count}</td>

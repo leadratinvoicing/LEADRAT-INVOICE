@@ -214,7 +214,7 @@ export default function Dashboard({ onOpenTds, onViewUser, onNavigate, onDownloa
       </div>
 
       {narrowScope && (
-        <div style={{ background: 'var(--brand-light)', border: '1px solid #BFE7E1', borderRadius: 8, padding: '8px 12px', marginBottom: 12, fontSize: 12, color: 'var(--brand-dark)' }}>
+        <div style={{ background: 'var(--brand-light)', border: '1px solid #BFE7E1', borderRadius: 8, padding: '8px 12px', marginBottom: 12, fontSize: 10, color: 'var(--brand-dark)' }}>
           🔒 These figures cover the documents you raised, plus anything assigned to you.
         </div>
       )}
@@ -241,7 +241,7 @@ export default function Dashboard({ onOpenTds, onViewUser, onNavigate, onDownloa
       <div className="card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
           <div className="card-title" style={{ marginBottom: 0 }}>Revenue by Sub-type</div>
-          <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+          <div style={{ fontSize: 10, color: 'var(--muted)' }}>
             {money(subTypeTotal)} received across {subTypeRows.length} sub-type{subTypeRows.length === 1 ? '' : 's'}
           </div>
         </div>
@@ -285,7 +285,7 @@ export default function Dashboard({ onOpenTds, onViewUser, onNavigate, onDownloa
             </tbody>
           </table>
         </div>
-        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 10, lineHeight: 1.6 }}>
+        <div style={{ fontSize: 9.1, color: 'var(--muted)', marginTop: 10, lineHeight: 1.6 }}>
           Revenue is the money received on tax invoices. An invoice carrying several sub-types splits its
           receipts between them in proportion to what each line was billed, so the rows always add up to
           Total Revenue.
@@ -298,7 +298,7 @@ export default function Dashboard({ onOpenTds, onViewUser, onNavigate, onDownloa
             {rangeActive ? 'Documents in This Range' : 'Recent Documents'}
           </div>
           {all.length > recentLimit && (
-            <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+            <div style={{ fontSize: 10, color: 'var(--muted)' }}>
               Showing {recentLimit} of {all.length} — open Invoices or Proforma for the full list
             </div>
           )}
@@ -328,7 +328,7 @@ export default function Dashboard({ onOpenTds, onViewUser, onNavigate, onDownloa
                   <td><strong>{d.invoiceNo || ''}</strong></td>
                   <td><span className={'badge ' + (d.docType === 'invoice' ? 'badge-invoice' : 'badge-proforma')}>{d.docType === 'invoice' ? 'Invoice' : 'Proforma'}</span></td>
                   <td>{d.clientName || ''}</td>
-                  <td style={{ fontSize: 12 }}>{branchLabel(d.branch)}</td>
+                  <td style={{ fontSize: 10 }}>{branchLabel(d.branch)}</td>
                   <td>{fmtDate(d.invoiceDate)}</td>
                   <td><strong>{fmtMoneyForRegion(d.totalAmount, regionOf(d.branch))}</strong></td>
                   <td><span className={'badge ' + badge.cls}>{badge.label}</span></td>
@@ -369,10 +369,10 @@ export default function Dashboard({ onOpenTds, onViewUser, onNavigate, onDownloa
                           {u.name || u.email}
                         </a>
                       </td>
-                      <td style={{ fontSize: 12 }}>{u.email}</td>
+                      <td style={{ fontSize: 10 }}>{u.email}</td>
                       <td><span className="badge badge-invoice">{u.department || '-'}</span></td>
                       <td><span className={'badge ' + (status === 'active' ? 'badge-paid' : 'badge-due')}>{status}</span></td>
-                      <td style={{ fontSize: 12 }}>{joined}</td>
+                      <td style={{ fontSize: 10 }}>{joined}</td>
                     </tr>
                   );
                 })}

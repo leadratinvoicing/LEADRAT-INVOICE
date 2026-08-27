@@ -5,7 +5,9 @@ import {
   assigneeLabel, branchLabel, dataScopeOf, filterByDateRange, fmtDate, fmtMoneyForRegion, MONEY_EPS,
   parseDateValue, pendingOf, proformaState, receivedOf, regionOf, sameEmail, statusBadgeOf, visibleDocsFor
 } from '../utils';
+import ColumnPicker, { loadColumnPrefs } from './ColumnPicker';
 import DateRangeFilter from './DateRangeFilter';
+import { PdfIcon, WordIcon } from './FileIcons';
 import SortableTh, { sortRows, useSort } from './SortableTh';
 
 /**
@@ -53,20 +55,110 @@ export default function InvoiceListPage({
     dueDate: (d) => parseDateValue(d.dueDate || d.invoiceDate)
   }), [invoices, users]);
 
-  const columns = [
-    { key: 'invoiceNo', label: 'Invoice No' },
-    { key: 'clientName', label: 'Client' },
-    { key: 'clientGstin', label: 'GSTIN / TRN' },
-    { key: 'branch', label: 'Branch' },
-    { key: 'invoiceDate', label: 'Date' },
-    { key: 'description', label: 'Description' },
-    { key: 'totalAmount', label: 'Total' },
-    { key: 'pending', label: 'Pending' },
-    { key: 'status', label: 'Status' }
-  ];
-  if (!isInvoice) columns.push({ key: 'dueDate', label: 'Due Date' });
-  columns.push({ key: 'createdBy', label: 'Created By' });
-  columns.push({ key: 'assignedTo', label: 'Assigned To' });
+  /**
+   * Every column this table can show, each carrying its own cell renderer so a
+   * hidden column takes its cells with it. `ctx` holds the per-row figures the
+   * renderers share, computed once below.
+   */
+  const allColumns = useMemo(() => {
+    const cols = [
+      {
+        key: 'invoiceNo',
+        label: isInvoice ? 'Invoice No' : 'Proforma No',
+        locked: true, // the row's identity — never hideable
+        render: (d, ctx) => (
+          <td>
+            <strong>{d.invoiceNo}</strong>
+            {isInvoice && d.sourceProformaNo && (
+              <div style={{ fontSize: 8.3, color: 'var(--muted)' }} title="Raised against this proforma">
+                ← {d.sourceProformaNo}
+              </div>
+            )}
+            {!isInvoice && ctx.linkedNos && (
+              <div style={{ fontSize: 8.3, color: 'var(--muted)' }} title="Tax invoice raised from this proforma">
+                → {ctx.linkedNos}
+              </div>
+            )}
+          </td>
+        )
+      },
+      { key: 'clientName', label: 'Client', render: (d) => <td>{d.clientName || ''}</td> },
+      {
+        key: 'clientGstin',
+        label: isInvoice ? 'GSTIN / TRN' : 'GSTIN / TRN',
+        render: (d) => <td style={{ fontSize: 9.1, color: 'var(--muted)' }}>{d.clientGstin || '-'}</td>
+      },
+      { key: 'branch', label: 'Branch', render: (d) => <td style={{ fontSize: 10 }}>{branchLabel(d.branch)}</td> },
+      { key: 'invoiceDate', label: 'Date', render: (d) => <td>{fmtDate(d.invoiceDate)}</td> },
+      {
+        key: 'description',
+        label: 'Description',
+        render: (d) => (
+          <td>
+            {d.description || ''}{' '}
+            {d.subType && <span style={{ color: 'var(--muted)', fontSize: 9.1 }}>({d.subType})</span>}
+          </td>
+        )
+      },
+      { key: 'totalAmount', label: 'Total', render: (d, ctx) => <td><strong>{ctx.money(d.totalAmount)}</strong></td> },
+      {
+        key: 'pending',
+        label: 'Pending',
+        render: (d, ctx) => (
+          <td
+            style={{ color: ctx.pending > MONEY_EPS ? '#991B1B' : 'var(--muted)', fontWeight: ctx.pending > MONEY_EPS ? 600 : 400 }}
+            title={ctx.pending > MONEY_EPS ? ctx.money(ctx.pending) + ' still to be received' : 'Fully received'}
+          >
+            {ctx.money(ctx.pending)}
+          </td>
+        )
+      },
+      {
+        key: 'status',
+        label: 'Status',
+        render: (d, ctx) => (
+          <td><span className={'badge ' + ctx.badge.cls} title={ctx.statusTitle}>{ctx.badge.label}</span></td>
+        )
+      }
+    ];
+    if (!isInvoice) {
+      cols.push({ key: 'dueDate', label: 'Due Date', render: (d) => <td>{fmtDate(d.dueDate || d.invoiceDate)}</td> });
+    }
+    cols.push({
+      key: 'createdBy',
+      label: 'Created By',
+      render: (d) => (
+        <td
+          style={{ fontSize: 10 }}
+          title={(d.createdByEmail || '') +
+            (d.updatedBy && d.updatedBy !== d.createdBy ? ' · last edited by ' + d.updatedBy : '')}
+        >
+          {d.createdBy || '—'}
+        </td>
+      )
+    });
+    cols.push({
+      key: 'assignedTo',
+      label: 'Assigned To',
+      render: (d) => (
+        <td style={{ fontSize: 10 }} title={d.assignmentNote || undefined}>
+          {d.assignedTo
+            ? <span className="badge badge-invoice">{assigneeLabel(d, users)}</span>
+            : <span style={{ color: 'var(--muted)' }}>—</span>}
+        </td>
+      )
+    });
+    return cols;
+  }, [isInvoice, users]);
+
+  // Which of them this person has chosen to see, remembered per user per table.
+  const tableId = isInvoice ? 'invoices' : 'proforma';
+  const [visibleCols, setVisibleCols] = useState(() => loadColumnPrefs(tableId, currentUser, allColumns));
+  useEffect(() => {
+    setVisibleCols(loadColumnPrefs(tableId, currentUser, allColumns));
+  }, [tableId, currentUser, allColumns]);
+
+  const columns = allColumns.filter((c) => c.locked || visibleCols.has(c.key));
 
   // Dashboard cards deep-link here with a status and/or a region pre-applied.
   useEffect(() => { setStatus(initialStatus || ''); }, [initialStatus]);
@@ -150,10 +242,17 @@ export default function InvoiceListPage({
           <option value="assigned">Assigned to me</option>
           <option value="unassigned">Unassigned</option>
         </select>
+        <ColumnPicker
+          tableId={tableId}
+          user={currentUser}
+          allColumns={allColumns}
+          visible={visibleCols}
+          onChange={setVisibleCols}
+        />
       </div>
 
       {narrowScope && (
-        <div style={{ background: 'var(--brand-light)', border: '1px solid #BFE7E1', borderRadius: 8, padding: '8px 12px', marginBottom: 12, fontSize: 12, color: 'var(--brand-dark)' }}>
+        <div style={{ background: 'var(--brand-light)', border: '1px solid #BFE7E1', borderRadius: 8, padding: '8px 12px', marginBottom: 12, fontSize: 10, color: 'var(--brand-dark)' }}>
           🔒 You are seeing the {isInvoice ? 'invoices' : 'proformas'} you raised, plus anything assigned to you.
         </div>
       )}
@@ -204,87 +303,68 @@ export default function InvoiceListPage({
                     (pro.pending > MONEY_EPS ? ' · ' + money(pro.pending) + ' still to be received' : '')
                   : 'No tax invoice raised yet');
 
+              // Everything the column renderers need, worked out once per row.
+              const rowCtx = { money, pending, badge, statusTitle, linkedNos, pro };
+
               return (
                 <Fragment key={d.id}>
                 <tr className={isEditingRow ? 'row-editing' : undefined}>
-                  <td>
-                    <strong>{d.invoiceNo}</strong>
-                    {isInvoice && d.sourceProformaNo && (
-                      <div style={{ fontSize: 10, color: 'var(--muted)' }} title="Raised against this proforma">
-                        ← {d.sourceProformaNo}
-                      </div>
-                    )}
-                    {!isInvoice && linkedNos && (
-                      <div style={{ fontSize: 10, color: 'var(--muted)' }} title="Tax invoice raised from this proforma">
-                        → {linkedNos}
-                      </div>
-                    )}
-                  </td>
-                  <td>{d.clientName || ''}</td>
-                  <td style={{ fontSize: 11, color: 'var(--muted)' }}>{d.clientGstin || '-'}</td>
-                  <td style={{ fontSize: 12 }}>{branchLabel(d.branch)}</td>
-                  <td>{fmtDate(d.invoiceDate)}</td>
-                  <td>
-                    {d.description || ''}{' '}
-                    {d.subType && <span style={{ color: 'var(--muted)', fontSize: 11 }}>({d.subType})</span>}
-                  </td>
-                  <td><strong>{money(d.totalAmount)}</strong></td>
-                  <td
-                    style={{ color: pending > MONEY_EPS ? '#991B1B' : 'var(--muted)', fontWeight: pending > MONEY_EPS ? 600 : 400 }}
-                    title={pending > MONEY_EPS ? money(pending) + ' still to be received' : 'Fully received'}
-                  >
-                    {money(pending)}
-                  </td>
-                  <td><span className={'badge ' + badge.cls} title={statusTitle}>{badge.label}</span></td>
-                  {!isInvoice && <td>{fmtDate(d.dueDate || d.invoiceDate)}</td>}
-                  <td
-                    style={{ fontSize: 12 }}
-                    title={(d.createdByEmail || '') +
-                      (d.updatedBy && d.updatedBy !== d.createdBy ? ' · last edited by ' + d.updatedBy : '')}
-                  >
-                    {d.createdBy || '—'}
-                  </td>
-                  <td style={{ fontSize: 12 }} title={d.assignmentNote || undefined}>
-                    {d.assignedTo
-                      ? <span className="badge badge-invoice">{assigneeLabel(d, users)}</span>
-                      : <span style={{ color: 'var(--muted)' }}>—</span>}
-                  </td>
+                  {columns.map((c) => (
+                    <Fragment key={c.key}>{c.render(d, rowCtx)}</Fragment>
+                  ))}
                   <td>
                     <div className="actions-cell">
                       {!isInvoice && (
                         pro.unbilled > MONEY_EPS ? (
                           <button
-                            className="icon-btn convert" onClick={() => onConvert(d.id)}
+                            className="action-btn convert" onClick={() => onConvert(d.id)}
                             title={(pro.invoiced > MONEY_EPS ? 'Convert balance — raise' : 'Convert — raise') +
                               ' a tax invoice for ' + money(pro.unbilled) + ' not yet invoiced on this proforma'}
                           >
-                            🔄
+                            <span className="ab-icon">🔄</span>
+                            <span className="ab-label">{pro.invoiced > MONEY_EPS ? 'Balance' : 'Convert'}</span>
                           </button>
                         ) : (
-                          <span className="icon-btn" style={{ color: 'var(--success)', cursor: 'default' }}
-                            title={'Fully invoiced · reconciled to ' + (linkedNos || '—')}>
-                            ✓
+                          <span className="action-btn done" title={'Fully invoiced · reconciled to ' + (linkedNos || '—')}>
+                            <span className="ab-icon">✓</span>
+                            <span className="ab-label">Invoiced</span>
                           </span>
                         )
                       )}
                       {canAssign && (
                         <button
-                          className={'icon-btn' + (d.assignedTo ? ' assigned' : '')}
+                          className={'action-btn' + (d.assignedTo ? ' assigned' : '')}
                           onClick={() => onAssign(d.id)}
                           title={d.assignedTo ? 'Assigned to ' + assigneeLabel(d, users) + ' — click to change' : 'Assign to a user'}
                         >
-                          👤
+                          <span className="ab-icon">👤</span>
+                          <span className="ab-label">Assign</span>
                         </button>
                       )}
-                      <button className="icon-btn preview" onClick={() => onPreview(d.id)}
-                        title="Preview before downloading">👁</button>
-                      <button className="icon-btn word" onClick={() => onDownload(d.id)}
-                        title="Download Word document">📘</button>
-                      <button className="icon-btn pdf" onClick={() => onDownloadPdf(d.id)}
-                        title="Download PDF document">📕</button>
-                      <button className="icon-btn edit" onClick={() => onEdit(d.id)}
-                        title={isEditingRow ? 'Close editor' : 'Edit'}>✏️</button>
-                      <button className="icon-btn delete" onClick={() => onDelete(d.id)} title="Delete">🗑</button>
+                      <button className="action-btn preview" onClick={() => onPreview(d.id)}
+                        title="Preview before downloading">
+                        <span className="ab-icon">👁</span>
+                        <span className="ab-label">Preview</span>
+                      </button>
+                      <button className="action-btn word" onClick={() => onDownload(d.id)}
+                        title="Download as a Word document">
+                        <span className="ab-icon"><WordIcon /></span>
+                        <span className="ab-label">Word</span>
+                      </button>
+                      <button className="action-btn pdf" onClick={() => onDownloadPdf(d.id)}
+                        title="Download as a PDF document">
+                        <span className="ab-icon"><PdfIcon /></span>
+                        <span className="ab-label">PDF</span>
+                      </button>
+                      <button className="action-btn edit" onClick={() => onEdit(d.id)}
+                        title={isEditingRow ? 'Close editor' : 'Edit this document'}>
+                        <span className="ab-icon">✏️</span>
+                        <span className="ab-label">{isEditingRow ? 'Close' : 'Edit'}</span>
+                      </button>
+                      <button className="action-btn delete" onClick={() => onDelete(d.id)} title="Delete this document">
+                        <span className="ab-icon">🗑</span>
+                        <span className="ab-label">Delete</span>
+                      </button>
                     </div>
                   </td>
                 </tr>

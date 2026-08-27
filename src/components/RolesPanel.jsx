@@ -133,7 +133,7 @@ export default function RolesPanel({ onClose }) {
           <button className="btn btn-secondary btn-sm" onClick={onClose}>Close</button>
         </div>
       </div>
-      <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 14 }}>
+      <p style={{ fontSize: 10.8, color: 'var(--muted)', marginBottom: 14 }}>
         A role is a named permission set plus a data scope. Assign one to a user and this becomes their
         access — edit the role and every holder updates with it. Departments stay as they are, for org structure.
       </p>
@@ -151,7 +151,7 @@ export default function RolesPanel({ onClose }) {
               const n = holders(r.id).length;
               return (
                 <button key={r.id} className={'tab' + (r.id === activeId ? ' active' : '')} onClick={() => setActiveId(r.id)}>
-                  {r.name}{n > 0 && <span style={{ opacity: 0.65, fontSize: 11 }}> · {n}</span>}
+                  {r.name}{n > 0 && <span style={{ opacity: 0.65, fontSize: 9.1 }}> · {n}</span>}
                 </button>
               );
             })}
@@ -193,7 +193,7 @@ export default function RolesPanel({ onClose }) {
               <PermissionsGrid perms={draft.permissions || {}} onToggle={togglePerm} />
 
               <div style={{ marginTop: 12, display: 'flex', gap: 8, justifyContent: 'space-between', flexWrap: 'wrap', alignItems: 'center' }}>
-                <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+                <div style={{ fontSize: 10, color: 'var(--muted)' }}>
                   {holders(draft.id).length === 0
                     ? 'No users hold this role yet.'
                     : 'Held by ' + holders(draft.id).map((u) => u.name || u.email).join(', ')}

@@ -156,19 +156,19 @@ export default function UsersPage({ onView, onEdit, onDelete, onCreate }) {
                       {u.name || ((u.firstName || '') + ' ' + (u.surname || '')).trim() || u.email}
                     </a>
                   </td>
-                  <td style={{ fontSize: 12 }} title={mobile || undefined}>{u.email || ''}</td>
+                  <td style={{ fontSize: 10 }} title={mobile || undefined}>{u.email || ''}</td>
                   <td><span className="badge badge-invoice">{u.department || '-'}</span></td>
-                  <td style={{ fontSize: 12 }}>
+                  <td style={{ fontSize: 10 }}>
                     {roleName(u)
                       ? <span className="badge badge-proforma">{roleName(u)}</span>
                       : <span style={{ color: 'var(--muted)' }}>Custom</span>}
                   </td>
-                  <td style={{ fontSize: 12 }}>{branchAccessShort(u.branchAccess)}</td>
-                  <td style={{ fontSize: 12 }}>
+                  <td style={{ fontSize: 10 }}>{branchAccessShort(u.branchAccess)}</td>
+                  <td style={{ fontSize: 10 }}>
                     <span className={'badge ' + (u.dataScope === 'own' ? 'badge-partial' : 'badge-paid')}>{scopeShort(u)}</span>
                   </td>
                   <td><span className={'badge ' + (status === 'active' ? 'badge-paid' : 'badge-due')}>{status}</span></td>
-                  <td style={{ fontSize: 12 }}>{joined}</td>
+                  <td style={{ fontSize: 10 }}>{joined}</td>
                   <td>
                     <div className="actions-cell">
                       <button className="icon-btn preview" onClick={() => onView(u.email)} title="View full details">👁</button>
@@ -186,7 +186,7 @@ export default function UsersPage({ onView, onEdit, onDelete, onCreate }) {
       {rolesOpen && draftPerms && (
         <div className="card" style={{ marginTop: 20 }}>
           <div className="card-title">Default Permissions by Department</div>
-          <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 14 }}>
+          <p style={{ fontSize: 10.8, color: 'var(--muted)', marginBottom: 14 }}>
             These defaults are applied to <strong>new users</strong> at signup. Existing users keep their current permissions unless edited individually.
           </p>
           <div>
@@ -195,7 +195,7 @@ export default function UsersPage({ onView, onEdit, onDelete, onCreate }) {
                 <button key={d} className={'tab' + (d === activeDept ? ' active' : '')} onClick={() => switchDeptTab(d)}>{d}</button>
               ))}
             </div>
-            <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 10 }}>
+            <p style={{ fontSize: 10.8, color: 'var(--muted)', marginBottom: 10 }}>
               Default permissions for new <strong>{activeDept}</strong> users:
             </p>
             <PermissionsGrid perms={draftPerms} onToggle={togglePerm} />

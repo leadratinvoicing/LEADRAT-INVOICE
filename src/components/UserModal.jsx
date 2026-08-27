@@ -210,7 +210,7 @@ export default function UserModal({ open, user, onClose, onSave }) {
         </div>
       )}
 
-      <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12 }}>
+      <p style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 12 }}>
         {usingRole
           ? 'These come from the "' + selectedRole.name + '" role and update whenever it is edited. Tick the box above to hand-tune them for this person.'
           : 'Enable the modules this user can access, and the actions they can perform within each.'}
@@ -222,12 +222,12 @@ export default function UserModal({ open, user, onClose, onSave }) {
       <hr className="section-divider" />
       <div className="card-title">Password</div>
       {user.authProvider === 'google' ? (
-        <p style={{ fontSize: 12, color: 'var(--muted)' }}>
+        <p style={{ fontSize: 10, color: 'var(--muted)' }}>
           This account signs in with Google — there is no password to manage here.
         </p>
       ) : (
         <>
-          <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 10 }}>
+          <p style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 10 }}>
             Firebase holds passwords, and its browser SDK cannot set one for another account — that needs a
             server. Either send a reset link, or require a change at the user&apos;s next sign-in.
           </p>

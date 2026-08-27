@@ -49,7 +49,7 @@ export default function ForcePasswordModal({ open, onDone, onSignOut }) {
 
   return (
     <Modal open={open} title="Choose a New Password" onClose={() => {}} maxWidth={460} footer={footer} hideClose>
-      <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 16 }}>
+      <p style={{ fontSize: 10.8, color: 'var(--muted)', marginBottom: 16 }}>
         Your administrator set a temporary password for <strong>{(currentUser && currentUser.email) || 'your account'}</strong>.
         Pick your own before carrying on.
       </p>

@@ -65,7 +65,7 @@ export default function DocumentPreviewModal({ open, doc, onClose, onEdit, onDow
       onClose={onClose}
       footer={footer}
     >
-      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 12, color: 'var(--muted)', marginBottom: 12 }}>
+      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 10, color: 'var(--muted)', marginBottom: 12 }}>
         <span><strong style={{ color: 'var(--text)' }}>{doc.clientName || ''}</strong></span>
         <span>Total: <strong style={{ color: 'var(--text)' }}>{money(doc.totalAmount)}</strong></span>
         {!isProforma && <span>Received: <strong style={{ color: '#065F46' }}>{money(received)}</strong></span>}

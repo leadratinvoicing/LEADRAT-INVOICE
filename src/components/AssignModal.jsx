@@ -80,16 +80,16 @@ export default function AssignModal({ open, doc, onClose, onAssign }) {
       maxWidth={520}
       footer={footer}
     >
-      <div style={{ background: 'var(--brand-light)', borderRadius: 8, padding: 12, marginBottom: 14, fontSize: 13, color: 'var(--brand-dark)' }}>
+      <div style={{ background: 'var(--brand-light)', borderRadius: 8, padding: 12, marginBottom: 14, fontSize: 10.8, color: 'var(--brand-dark)' }}>
         <div><strong>{doc.clientName || '(no client)'}</strong></div>
-        <div style={{ marginTop: 4, fontSize: 12 }}>
+        <div style={{ marginTop: 4, fontSize: 10 }}>
           {fmtDate(doc.invoiceDate)}
           {doc.createdBy ? ' · raised by ' + doc.createdBy : ''}
         </div>
       </div>
 
       {doc.assignedTo && (
-        <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12 }}>
+        <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 12 }}>
           Currently assigned to <strong>{doc.assignedToName || doc.assignedTo}</strong>
           {doc.assignedAt ? ' on ' + new Date(doc.assignedAt).toLocaleDateString('en-GB') : ''}.
         </div>

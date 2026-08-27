@@ -137,13 +137,13 @@ export default function SearchableSelect({ value, onChange, options, placeholder
           value={query}
           onChange={(e) => { setQuery(e.target.value); setHighlight(0); }}
           onKeyDown={onSearchKeyDown}
-          style={{ padding: '8px 10px', fontSize: 13 }}
+          style={{ padding: '8px 10px', fontSize: 10.8 }}
         />
       </div>
 
       <div ref={listRef} style={{ overflowY: 'auto', flex: 1 }}>
         {filtered.length === 0 ? (
-          <div style={{ padding: '12px 14px', fontSize: 13, color: 'var(--muted)' }}>{emptyText}</div>
+          <div style={{ padding: '12px 14px', fontSize: 10.8, color: 'var(--muted)' }}>{emptyText}</div>
         ) : filtered.map((o, i) => {
           const isSelected = o.value === value;
           return (
@@ -152,7 +152,7 @@ export default function SearchableSelect({ value, onChange, options, placeholder
               onMouseEnter={() => setHighlight(i)}
               onClick={() => pick(o.value)}
               style={{
-                padding: '9px 14px', fontSize: 13, cursor: 'pointer',
+                padding: '9px 14px', fontSize: 10.8, cursor: 'pointer',
                 background: i === highlight ? 'var(--brand-light)' : 'transparent',
                 color: isSelected ? 'var(--brand-dark)' : 'var(--text)',
                 fontWeight: isSelected ? 600 : 400
@@ -168,7 +168,7 @@ export default function SearchableSelect({ value, onChange, options, placeholder
         <div
           onClick={() => pick('')}
           style={{
-            padding: '9px 14px', fontSize: 12, cursor: 'pointer', color: 'var(--muted)',
+            padding: '9px 14px', fontSize: 10, cursor: 'pointer', color: 'var(--muted)',
             borderTop: '1px solid var(--border)', background: '#FAFBFC', flexShrink: 0
           }}
         >
@@ -195,7 +195,7 @@ export default function SearchableSelect({ value, onChange, options, placeholder
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {selected ? selected.label : placeholder}
         </span>
-        <span style={{ color: 'var(--muted)', fontSize: 11, flexShrink: 0 }}>▼</span>
+        <span style={{ color: 'var(--muted)', fontSize: 9.1, flexShrink: 0 }}>▼</span>
       </button>
       {panel}
     </>

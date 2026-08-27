@@ -81,10 +81,10 @@ export default function TdsModal({ open, onClose, onSave, onEditInvoice }) {
   return (
     <Modal open={open} title="TDS Management — All Clients" onClose={onClose} maxWidth={1100} footer={footer}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 12, marginBottom: 16 }}>
-        <div className="stat-card tax"><div className="stat-label">Total TDS Expected</div><div className="stat-value" style={{ fontSize: 18 }}>{fmtMoneyR(totalExpected)}</div></div>
-        <div className="stat-card cleared"><div className="stat-label">TDS Received</div><div className="stat-value" style={{ fontSize: 18 }}>{fmtMoneyR(totalReceived)}</div></div>
-        <div className="stat-card due"><div className="stat-label">TDS Pending</div><div className="stat-value" style={{ fontSize: 18 }}>{fmtMoneyR(totalPending)}</div></div>
-        <div className="stat-card"><div className="stat-label">Not Applicable</div><div className="stat-value" style={{ fontSize: 18 }}>{totalNA} invoices</div></div>
+        <div className="stat-card tax"><div className="stat-label">Total TDS Expected</div><div className="stat-value" style={{ fontSize: 14.9 }}>{fmtMoneyR(totalExpected)}</div></div>
+        <div className="stat-card cleared"><div className="stat-label">TDS Received</div><div className="stat-value" style={{ fontSize: 14.9 }}>{fmtMoneyR(totalReceived)}</div></div>
+        <div className="stat-card due"><div className="stat-label">TDS Pending</div><div className="stat-value" style={{ fontSize: 14.9 }}>{fmtMoneyR(totalPending)}</div></div>
+        <div className="stat-card"><div className="stat-label">Not Applicable</div><div className="stat-value" style={{ fontSize: 14.9 }}>{totalNA} invoices</div></div>
       </div>
 
       <div className="filter-bar">
@@ -125,10 +125,10 @@ export default function TdsModal({ open, onClose, onSave, onEditInvoice }) {
               <tr key={r.id}>
                 <td><strong>{r.invoiceNo}</strong></td>
                 <td>{r.clientName || ''}</td>
-                <td style={{ fontSize: 12 }}>{fmtDate(r.invoiceDate)}</td>
+                <td style={{ fontSize: 10 }}>{fmtDate(r.invoiceDate)}</td>
                 <td>{fmtMoneyR(r.netAmount)}</td>
                 <td>
-                  <select className="form-input" style={{ padding: '6px 8px', fontSize: 12 }}
+                  <select className="form-input" style={{ padding: '6px 8px', fontSize: 10 }}
                     value={String(r.tdsRate)} onChange={(e) => onRowChange(r.id, 'tdsRate', e.target.value)}>
                     <option value="0">No TDS (0%)</option>
                     <option value="2">2%</option>
@@ -137,7 +137,7 @@ export default function TdsModal({ open, onClose, onSave, onEditInvoice }) {
                 </td>
                 <td><strong style={{ color: r.tdsStatus === 'received' ? 'var(--success)' : 'var(--warning)' }}>{fmtMoneyR(r.tdsAmount)}</strong></td>
                 <td>
-                  <select className="form-input" style={{ padding: '6px 8px', fontSize: 12 }}
+                  <select className="form-input" style={{ padding: '6px 8px', fontSize: 10 }}
                     value={r.tdsStatus} onChange={(e) => onRowChange(r.id, 'tdsStatus', e.target.value)}>
                     <option value="pending">Pending</option>
                     <option value="received">Received</option>
@@ -145,7 +145,7 @@ export default function TdsModal({ open, onClose, onSave, onEditInvoice }) {
                   </select>
                 </td>
                 <td>
-                  <input type="date" className="form-input" style={{ padding: '6px 8px', fontSize: 12 }}
+                  <input type="date" className="form-input" style={{ padding: '6px 8px', fontSize: 10 }}
                     value={dateToInput(r.tdsReceivedDate) || ''}
                     disabled={r.tdsStatus !== 'received'}
                     onChange={(e) => onRowChange(r.id, 'tdsReceivedDate', e.target.value)} />

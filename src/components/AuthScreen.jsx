@@ -337,7 +337,7 @@ export default function AuthScreen() {
         <div className="auth-logo">
           <img src={LOGO_DATA_URI} alt="Leadrat" />
         </div>
-        <div className="auth-subtitle" style={{ marginTop: 8, fontSize: 15, color: 'var(--text)', fontWeight: 500 }}>
+        <div className="auth-subtitle" style={{ marginTop: 8, fontSize: 12.5, color: 'var(--text)', fontWeight: 500 }}>
           Leadrat Invoicing
         </div>
 
@@ -378,7 +378,7 @@ export default function AuthScreen() {
             <GoogleButton onClick={doGoogleSignIn} disabled={busy} label="Sign in with Google" />
 
             <div className="auth-switch">Don&apos;t have an account? <a onClick={() => switchAuthMode('signup')}>Sign Up</a></div>
-            <div style={{ textAlign: 'center', fontSize: 11, color: 'var(--muted)', marginTop: 8 }}>
+            <div style={{ textAlign: 'center', fontSize: 9.1, color: 'var(--muted)', marginTop: 8 }}>
               Forgot your password? Ask your administrator to reset it for you.
             </div>
           </div>
@@ -472,9 +472,9 @@ export default function AuthScreen() {
 
         {/* Load Backup — available in every auth mode */}
         <div style={{ textAlign: 'center', marginTop: 24, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
-          <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 6 }}>First time on this device? Load your data.</div>
+          <div style={{ fontSize: 9.1, color: 'var(--muted)', marginBottom: 6 }}>First time on this device? Load your data.</div>
           <button
-            type="button" className="btn btn-secondary" style={{ fontSize: 12, padding: '6px 12px' }}
+            type="button" className="btn btn-secondary" style={{ fontSize: 10, padding: '6px 12px' }}
             onClick={() => backupFileRef.current && backupFileRef.current.click()}
           >
             📂 Load Backup File
