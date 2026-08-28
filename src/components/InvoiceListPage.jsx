@@ -21,7 +21,7 @@ const BRANCH_FILTERS = [
 
 export default function InvoiceListPage({
   docType, initialStatus, initialRegion, onNew, onEdit, onDelete, onPreview, onDownload, onDownloadPdf,
-  onExport, onConvert, onAssign, canAssign, editingId, editor
+  onExport, onConvert, onAssign, can, editingId, editor
 }) {
   const { invoices, users, currentUser } = useApp();
   const [search, setSearch] = useState('');
@@ -35,6 +35,11 @@ export default function InvoiceListPage({
   const { sort, toggle, setDir } = useSort('invoiceDate', 'desc');
 
   const isInvoice = docType === 'invoice';
+  // Only render the controls this user may actually use. MainApp re-checks each
+  // one when it fires, so this is presentation, not the enforcement itself.
+  const mod = isInvoice ? 'invoices' : 'proforma';
+  const may = (action) => (can ? can(mod, action) : true);
+  const mayCreateInvoice = can ? can('invoices', 'create') : true;
   // Users on the narrow scope are told why the list is shorter than they expect.
   const narrowScope = dataScopeOf(currentUser) === 'own';
 
@@ -204,8 +209,12 @@ export default function InvoiceListPage({
           <div className="page-subtitle">{isInvoice ? 'Manage all tax invoices' : 'Generate and manage proforma invoices'}</div>
         </div>
         <div className="page-actions">
-          <button className="btn btn-secondary" onClick={() => onExport(docType)}>Export Excel</button>
-          <button className="btn btn-primary" onClick={() => onNew(docType)}>+ New {isInvoice ? 'Invoice' : 'Proforma'}</button>
+          {may('export') && (
+            <button className="btn btn-secondary" onClick={() => onExport(docType)}>Export Excel</button>
+          )}
+          {may('create') && (
+            <button className="btn btn-primary" onClick={() => onNew(docType)}>+ New {isInvoice ? 'Invoice' : 'Proforma'}</button>
+          )}
         </div>
       </div>
 
@@ -314,7 +323,7 @@ export default function InvoiceListPage({
                   ))}
                   <td>
                     <div className="actions-cell">
-                      {!isInvoice && (
+                      {!isInvoice && mayCreateInvoice && (
                         pro.unbilled > MONEY_EPS ? (
                           <button
                             className="action-btn convert" onClick={() => onConvert(d.id)}
@@ -331,7 +340,7 @@ export default function InvoiceListPage({
                           </span>
                         )
                       )}
-                      {canAssign && (
+                      {may('assign') && (
                         <button
                           className={'action-btn' + (d.assignedTo ? ' assigned' : '')}
                           onClick={() => onAssign(d.id)}
@@ -346,6 +355,7 @@ export default function InvoiceListPage({
                         <span className="ab-icon">👁</span>
                         <span className="ab-label">Preview</span>
                       </button>
+                      {may('generatePdf') && (<>
                       <button className="action-btn word" onClick={() => onDownload(d.id)}
                         title="Download as a Word document">
                         <span className="ab-icon"><WordIcon /></span>
@@ -356,15 +366,20 @@ export default function InvoiceListPage({
                         <span className="ab-icon"><PdfIcon /></span>
                         <span className="ab-label">PDF</span>
                       </button>
+                      </>)}
+                      {may('edit') && (
                       <button className="action-btn edit" onClick={() => onEdit(d.id)}
                         title={isEditingRow ? 'Close editor' : 'Edit this document'}>
                         <span className="ab-icon">✏️</span>
                         <span className="ab-label">{isEditingRow ? 'Close' : 'Edit'}</span>
                       </button>
+                      )}
+                      {may('delete') && (
                       <button className="action-btn delete" onClick={() => onDelete(d.id)} title="Delete this document">
                         <span className="ab-icon">🗑</span>
                         <span className="ab-label">Delete</span>
                       </button>
+                      )}
                     </div>
                   </td>
                 </tr>

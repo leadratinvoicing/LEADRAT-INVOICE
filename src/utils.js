@@ -511,10 +511,18 @@ export function sameEmail(a, b) {
   return !!a && !!b && String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
 }
 
-/** A user's effective data scope. Admins always see everything. */
+/**
+ * A user's effective data scope. Admins always see everything.
+ *
+ * Everyone else is restricted UNLESS an admin has explicitly opened them up:
+ * only the literal value 'all' widens the view. A profile with no dataScope at
+ * all — anything created before this setting existed — is therefore treated as
+ * 'own', because defaulting an unconfigured account to "sees every invoice in
+ * the company" is the wrong way to be wrong.
+ */
 export function dataScopeOf(user) {
   if (!user || user.role === 'admin') return 'all';
-  return user.dataScope === 'own' ? 'own' : 'all';
+  return user.dataScope === 'all' ? 'all' : 'own';
 }
 
 /** Is this document the user's own work, or handed to them? */
@@ -565,14 +573,17 @@ export function effectivePermissions(user, roles) {
   return user.permissions || {};
 }
 
-/** Data scope resolves the same way — the role sets it unless overridden. */
+/**
+ * Data scope resolves the same way — the role sets it unless overridden — and
+ * closes to 'own' by default, matching dataScopeOf().
+ */
 export function effectiveDataScope(user, roles) {
   if (!user || user.role === 'admin') return 'all';
   if (user.roleId && user.permissionsSource !== 'custom') {
     const role = (roles || []).find((r) => r.id === user.roleId);
-    if (role && role.dataScope) return role.dataScope === 'own' ? 'own' : 'all';
+    if (role && role.dataScope) return role.dataScope === 'all' ? 'all' : 'own';
   }
-  return user.dataScope === 'own' ? 'own' : 'all';
+  return user.dataScope === 'all' ? 'all' : 'own';
 }
 
 /** Display name for a document's assignee, falling back to the raw email. */

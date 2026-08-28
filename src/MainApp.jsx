@@ -78,6 +78,25 @@ export default function MainApp() {
   const isAdmin = currentUser && currentUser.role === 'admin';
   const perms = (currentUser && currentUser.permissions) || {};
 
+  /* ---------------- PERMISSION GATE ----------------
+     Every action checks this, and every handler re-checks it rather than
+     trusting that the button was hidden — a hidden control is a convenience,
+     not enforcement. `mod` is a PERMISSION_MODULES key ('invoices',
+     'proforma', 'clients', 'import'); admins pass everything. */
+  const can = useCallback(
+    (mod, action) => !!isAdmin || !!((perms[mod] || {})[action]),
+    [isAdmin, perms]
+  );
+
+  /** Documents are governed by the module matching their type. */
+  const modOf = (docType) => (docType === 'proforma' ? 'proforma' : 'invoices');
+
+  /** Refuse an action the user has no right to, with a reason they can act on. */
+  const deny = useCallback((what) => {
+    showToast('You do not have permission to ' + what, 'error');
+    return false;
+  }, [showToast]);
+
   /* ---------------- NAVIGATION ---------------- */
   /**
    * `filter` is a status on the document lists and a region on the clients page;
@@ -111,7 +130,10 @@ export default function MainApp() {
   }
 
   /* ---------------- INVOICES ---------------- */
-  const openInvoiceForm = (docType) => setInvoiceModal({ ...CLOSED_INVOICE_MODAL, open: true, docType });
+  const openInvoiceForm = (docType) => {
+    if (!can(modOf(docType), 'create')) return deny('create ' + (docType === 'proforma' ? 'proformas' : 'tax invoices'));
+    setInvoiceModal({ ...CLOSED_INVOICE_MODAL, open: true, docType });
+  };
 
   const editInvoice = (id) => {
     // Clicking edit again on the row already being edited closes the editor.
@@ -120,12 +142,14 @@ export default function MainApp() {
     }
     const d = stateRef.current.invoices.find((x) => x.id === id);
     if (!d) return;
+    if (!can(modOf(d.docType), 'edit')) return deny('edit this document');
     setTdsOpen(false);
     setInvoiceModal({ ...CLOSED_INVOICE_MODAL, open: true, docType: d.docType, editing: d });
   };
 
   async function deleteInvoice(id) {
     const doomed = stateRef.current.invoices.find((x) => x.id === id);
+    if (doomed && !can(modOf(doomed.docType), 'delete')) return deny('delete this document');
     const linkedNo = doomed && doomed.sourceProformaNo;
     const msg = linkedNo
       ? 'Delete this tax invoice? This cannot be undone.\n\nIts amount goes back to pending on proforma ' + linkedNo + '.'
@@ -154,6 +178,7 @@ export default function MainApp() {
   async function downloadDocument(id, format) {
     const d = stateRef.current.invoices.find((x) => x.id === id);
     if (!d) return showToast('Document not found', 'error');
+    if (!can(modOf(d.docType), 'generatePdf')) return deny('generate documents');
     const label = format === 'pdf' ? 'PDF' : 'Word doc';
     try {
       const fname = format === 'pdf'
@@ -199,6 +224,7 @@ export default function MainApp() {
   }
 
   function exportToExcel(docType) {
+    if (!can(modOf(docType), 'export')) return deny('export this data');
     const list = visibleDocsFor(stateRef.current.invoices, currentUser).filter((d) => d.docType === docType);
     if (list.length === 0) return showToast('No data to export', 'warn');
     exportInvoicesToExcel(list, docType, stateRef.current.invoices);
@@ -207,6 +233,12 @@ export default function MainApp() {
 
   async function saveInvoiceDoc(doc, downloadAs, setBadField) {
     const isNew = !doc.id;
+    // The write itself is gated, not just the button that opened the form.
+    const mod = modOf(doc.docType);
+    if (!can(mod, isNew ? 'create' : 'edit')) {
+      return deny(isNew ? 'create documents' : 'edit this document');
+    }
+    if (downloadAs && !can(mod, 'generatePdf')) return deny('generate documents');
     // Reload so we catch invoices created since this tab loaded.
     const latest = await reloadInvoices();
 
@@ -467,11 +499,18 @@ export default function MainApp() {
   }
 
   /* ---------------- CLIENTS ---------------- */
-  const openClientForm = () => setClientModal({ open: true, editing: null });
-  const editClient = (id) => setClientModal({ open: true, editing: stateRef.current.clients.find((c) => c.id === id) || null });
+  const openClientForm = () => {
+    if (!can('clients', 'create')) return deny('add clients');
+    setClientModal({ open: true, editing: null });
+  };
+  const editClient = (id) => {
+    if (!can('clients', 'edit')) return deny('edit clients');
+    setClientModal({ open: true, editing: stateRef.current.clients.find((c) => c.id === id) || null });
+  };
 
   async function saveClientRecord(data) {
     const editing = clientModal.editing;
+    if (!can('clients', editing ? 'edit' : 'create')) return deny(editing ? 'edit clients' : 'add clients');
     const list = editing
       ? stateRef.current.clients.map((c) => (c.id === editing.id ? { ...c, ...data } : c))
       : [...stateRef.current.clients, { id: uid(), ...data, createdAt: new Date().toISOString() }];
@@ -481,6 +520,7 @@ export default function MainApp() {
   }
 
   async function deleteClient(id) {
+    if (!can('clients', 'delete')) return deny('delete clients');
     if (!confirm('Delete this client? Invoices for this client will not be deleted but will lose link.')) return;
     await saveClients(stateRef.current.clients.filter((c) => c.id !== id));
     showToast('Client deleted');
@@ -725,7 +765,11 @@ export default function MainApp() {
   }
 
   /* ---------------- ASSIGNMENT ---------------- */
-  const openAssign = (id) => setAssignModal({ open: true, id });
+  const openAssign = (id) => {
+    const d = stateRef.current.invoices.find((x) => x.id === id);
+    if (d && !can(modOf(d.docType), 'assign')) return deny('assign documents');
+    setAssignModal({ open: true, id });
+  };
 
   /**
    * Hand a document to a colleague. The assignee sees it even on the narrow data
@@ -734,6 +778,7 @@ export default function MainApp() {
   async function assignDocument(id, patch) {
     const latest = await reloadInvoices();
     const target = latest.find((x) => x.id === id);
+    if (target && !can(modOf(target.docType), 'assign')) { setAssignModal({ open: false, id: null }); return deny('assign documents'); }
     if (!target) {
       setAssignModal({ open: false, id: null });
       return showToast('That document no longer exists', 'error');
@@ -905,7 +950,7 @@ export default function MainApp() {
             onExport={exportToExcel}
             onConvert={startProformaConversion}
             onAssign={openAssign}
-            canAssign={isAdmin || !!(perms[page === 'invoices' ? 'invoices' : 'proforma'] || {}).assign}
+            can={can}
             editingId={listHostsEditor ? editingDoc.id : null}
             editor={inlineEditor}
           />
@@ -916,6 +961,7 @@ export default function MainApp() {
             onAdd={openClientForm}
             onEdit={editClient}
             onDelete={deleteClient}
+            can={can}
             onDownloadTemplate={onDownloadClientTemplate}
             onBulkFile={handleClientBulkFile}
           />

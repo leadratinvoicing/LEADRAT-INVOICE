@@ -19,7 +19,7 @@ const REGION_BADGE_STYLE = {
   dubai: { background: '#FEF3C7', color: '#92400E' }
 };
 
-export default function ClientsPage({ initialRegion, onAdd, onEdit, onDelete, onDownloadTemplate, onBulkFile }) {
+export default function ClientsPage({ initialRegion, onAdd, onEdit, onDelete, onDownloadTemplate, onBulkFile, can }) {
   const { clients, invoices, currentUser } = useApp();
   const [search, setSearch] = useState('');
   const [region, setRegion] = useState(initialRegion || '');
@@ -97,6 +97,9 @@ export default function ClientsPage({ initialRegion, onAdd, onEdit, onDelete, on
     ));
   };
 
+  // Presentation only — MainApp re-checks each action when it fires.
+  const may = (action) => (can ? can('clients', action) : true);
+
   return (
     <div className="page show">
       <div className="page-header">
@@ -105,8 +108,10 @@ export default function ClientsPage({ initialRegion, onAdd, onEdit, onDelete, on
           <div className="page-subtitle">Manage your client database</div>
         </div>
         <div className="page-actions">
+          {may('create') && (<>
           <button className="btn btn-secondary" onClick={onDownloadTemplate} title="Download Excel template for bulk client upload">📥 Download Template</button>
           <button className="btn btn-secondary" onClick={() => fileRef.current && fileRef.current.click()} title="Upload Excel file with multiple clients">📤 Bulk Upload</button>
+          </>)}
           <input
             ref={fileRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: 'none' }}
             onChange={(e) => {
@@ -115,7 +120,7 @@ export default function ClientsPage({ initialRegion, onAdd, onEdit, onDelete, on
               if (file) onBulkFile(file);
             }}
           />
-          <button className="btn btn-primary" onClick={onAdd}>+ Add Client</button>
+          {may('create') && <button className="btn btn-primary" onClick={onAdd}>+ Add Client</button>}
         </div>
       </div>
 
@@ -175,8 +180,8 @@ export default function ClientsPage({ initialRegion, onAdd, onEdit, onDelete, on
                   <td>{count}</td>
                   <td>
                     <div className="actions-cell">
-                      <button className="icon-btn edit" onClick={() => onEdit(c.id)} title="Edit">✏️</button>
-                      <button className="icon-btn delete" onClick={() => onDelete(c.id)} title="Delete">🗑</button>
+                      {may('edit') && <button className="icon-btn edit" onClick={() => onEdit(c.id)} title="Edit">✏️</button>}
+                      {may('delete') && <button className="icon-btn delete" onClick={() => onDelete(c.id)} title="Delete">🗑</button>}
                     </div>
                   </td>
                 </tr>
