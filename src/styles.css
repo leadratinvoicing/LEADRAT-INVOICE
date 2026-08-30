@@ -303,3 +303,37 @@ tr.editor-row>td{padding:0;background:#F9FAFB;border-bottom:2px solid var(--bran
 .col-picker-row.locked input{cursor:not-allowed}
 .col-picker-lock{margin-left:auto;font-size:8.3px;opacity:0.6}
 .col-picker-foot{flex-shrink:0;padding:8px 12px;border-top:1px solid var(--border);font-size:8.3px;color:var(--muted);background:#FAFBFC}
+
+/* ===== CLIENT DEEP-LINK ===== */
+/* Clickable document counts on the Clients page. */
+.doc-count{padding:2px 8px;border-radius:10px;font-size:9.5px;font-weight:700;letter-spacing:0.2px;border:1px solid transparent;transition:all 0.15s}
+.doc-count.invoice{background:#DBEAFE;color:#1E40AF;border-color:#BFDBFE}
+.doc-count.invoice:hover{background:#BFDBFE;color:#1E3A8A}
+.doc-count.proforma{background:#FEF3C7;color:#92400E;border-color:#FDE68A}
+.doc-count.proforma:hover{background:#FDE68A;color:#78350F}
+/* The banner shown on a document list that has been narrowed to one client. */
+.client-filter-chip{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:10.8px;color:#1E40AF}
+.client-filter-chip button{font-size:10.8px;font-weight:600;color:#1E40AF;background:#DBEAFE;border:1px solid #BFDBFE;border-radius:6px;padding:3px 10px}
+.client-filter-chip button:hover{background:#BFDBFE}
+
+/* ===== CLIENT DOCUMENT HISTORY (expands under a client row) ===== */
+.client-name-toggle{display:inline-flex;align-items:center;gap:5px;padding:0;background:none;border:none;text-align:left;color:var(--text);font-size:inherit;font-family:inherit}
+.client-name-toggle:hover strong{color:var(--brand-dark);text-decoration:underline}
+.client-caret{display:inline-block;font-size:9px;color:var(--muted);transition:transform 0.15s;flex:0 0 10px}
+.client-caret.open{transform:rotate(90deg);color:var(--brand-dark)}
+tr.client-row-open{background:var(--brand-light)}
+tr.client-row-open:hover{background:var(--brand-light)}
+tr.client-docs-row:hover{background:transparent}
+tr.client-docs-row>td{padding:0;background:#F9FAFB;border-bottom:2px solid var(--brand)}
+.client-docs{padding:12px 16px}
+.client-docs-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:9px;font-size:10.8px;color:var(--muted)}
+.client-docs-head strong{color:var(--brand-dark);font-size:11.6px}
+.client-docs-open{margin-left:auto;font-size:10px;font-weight:600;color:#1E40AF;background:#DBEAFE;border:1px solid #BFDBFE;border-radius:6px;padding:3px 10px}
+.client-docs-open:hover{background:#BFDBFE}
+.client-docs-empty{font-size:10.8px;color:var(--muted);padding:8px 0}
+.client-docs-table{width:100%;border-collapse:collapse;font-size:10px;background:#fff;border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.client-docs-table th{background:#F3F4F6;padding:7px 9px;font-size:8.5px}
+.client-docs-table td{padding:7px 9px;border-bottom:1px solid var(--border)}
+.client-docs-table tbody tr{cursor:pointer}
+.client-docs-table tbody tr:hover{background:var(--brand-light)}
+.client-docs-table tbody tr:last-child td{border-bottom:none}

@@ -20,10 +20,10 @@ const BRANCH_FILTERS = [
 ];
 
 export default function InvoiceListPage({
-  docType, initialStatus, initialRegion, onNew, onEdit, onDelete, onPreview, onDownload, onDownloadPdf,
-  onExport, onConvert, onAssign, can, editingId, editor
+  docType, initialStatus, initialRegion, initialClientId, onNew, onEdit, onDelete, onPreview, onDownload,
+  onDownloadPdf, onExport, onConvert, onAssign, can, editingId, editor
 }) {
-  const { invoices, users, currentUser } = useApp();
+  const { invoices, clients, users, currentUser } = useApp();
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState(initialStatus || '');
   const [branch, setBranch] = useState(initialRegion || '');
@@ -31,6 +31,8 @@ export default function InvoiceListPage({
   const [range, setRange] = useState({ from: '', to: '' });
   // 'mine' / 'assigned' narrow further inside whatever the user can already see.
   const [ownership, setOwnership] = useState('');
+  // Set when the Clients page deep-links into this list for one client.
+  const [clientFilter, setClientFilter] = useState(initialClientId || '');
   // Newest first by default, matching how the list behaved before sorting existed.
   const { sort, toggle, setDir } = useSort('invoiceDate', 'desc');
 
@@ -168,6 +170,7 @@ export default function InvoiceListPage({
   // Dashboard cards deep-link here with a status and/or a region pre-applied.
   useEffect(() => { setStatus(initialStatus || ''); }, [initialStatus]);
   useEffect(() => { setBranch(initialRegion || ''); }, [initialRegion]);
+  useEffect(() => { setClientFilter(initialClientId || ''); }, [initialClientId]);
 
   const s = search.toLowerCase();
   // Start from the documents this user is allowed to see (based on branchAccess)
@@ -192,11 +195,20 @@ export default function InvoiceListPage({
   // 'india' is the two Indian branches together; anything else is a single branch.
   if (branch === 'india') list = list.filter((d) => d.branch !== 'dubai');
   else if (branch) list = list.filter((d) => d.branch === branch);
+  if (clientFilter) {
+    const named = (clients.find((c) => c.id === clientFilter) || {}).name || '';
+    const namedKey = named.trim().toLowerCase();
+    list = list.filter((d) => d.clientId === clientFilter ||
+      (!d.clientId && namedKey && (d.clientName || '').trim().toLowerCase() === namedKey));
+  }
   if (ownership === 'mine') list = list.filter((d) => sameEmail(d.createdByEmail, currentUser && currentUser.email));
   else if (ownership === 'assigned') list = list.filter((d) => sameEmail(d.assignedTo, currentUser && currentUser.email));
   else if (ownership === 'unassigned') list = list.filter((d) => !d.assignedTo);
   list = filterByDateRange(list, range.from, range.to);
   list = sortRows(list, sort, accessors);
+
+  // How many documents of this type the user can see in total, for the chip.
+  const allForType = visibleDocsFor(invoices, currentUser).filter((d) => d.docType === docType).length;
 
   // Headline figures for whatever the filters currently select.
   const rangeTotal = list.reduce((acc, d) => acc + (+d.totalAmount || 0), 0);
@@ -259,6 +271,17 @@ export default function InvoiceListPage({
           onChange={setVisibleCols}
         />
       </div>
+
+      {clientFilter && (
+        <div className="client-filter-chip">
+          <span>
+            Showing only {isInvoice ? 'tax invoices' : 'proformas'} for{' '}
+            <strong>{(clients.find((c) => c.id === clientFilter) || {}).name || 'this client'}</strong>
+            {' '}· {list.length} of {allForType} {isInvoice ? 'invoice' : 'proforma'}{allForType === 1 ? '' : 's'}
+          </span>
+          <button type="button" onClick={() => setClientFilter('')}>✕ Show all</button>
+        </div>
+      )}
 
       {narrowScope && (
         <div style={{ background: 'var(--brand-light)', border: '1px solid #BFE7E1', borderRadius: 8, padding: '8px 12px', marginBottom: 12, fontSize: 10, color: 'var(--brand-dark)' }}>

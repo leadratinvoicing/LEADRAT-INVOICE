@@ -1,6 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../AppContext';
-import { clientRegionMap, visibleClientsFor } from '../utils';
+import {
+  branchLabel, clientRegionMap, fmtDate, fmtMoneyForRegion, parseDateValue, regionOf,
+  statusBadgeOf, visibleClientsFor, visibleDocsFor
+} from '../utils';
 import SortableTh, { sortRows, useSort } from './SortableTh';
 
 const COLUMNS = [
@@ -19,12 +22,14 @@ const REGION_BADGE_STYLE = {
   dubai: { background: '#FEF3C7', color: '#92400E' }
 };
 
-export default function ClientsPage({ initialRegion, onAdd, onEdit, onDelete, onDownloadTemplate, onBulkFile, can }) {
+export default function ClientsPage({ initialRegion, onAdd, onEdit, onDelete, onDownloadTemplate, onBulkFile, onOpenDocuments, can }) {
   const { clients, invoices, currentUser } = useApp();
   const [search, setSearch] = useState('');
   const [region, setRegion] = useState(initialRegion || '');
   const { sort, toggle, setDir } = useSort('name', 'asc');
   const fileRef = useRef(null);
+  // Which client's document history is expanded under its row. One at a time.
+  const [expandedId, setExpandedId] = useState(null);
 
   // A dashboard "Total Clients" card deep-links here with a region pre-selected.
   useEffect(() => { setRegion(initialRegion || ''); }, [initialRegion]);
@@ -33,10 +38,34 @@ export default function ClientsPage({ initialRegion, onAdd, onEdit, onDelete, on
   const invoiceCounts = useMemo(() => {
     const m = new Map();
     for (const d of invoices) {
-      if (d.clientId) m.set(d.clientId, (m.get(d.clientId) || 0) + 1);
+      if (!d.clientId) continue;
+      const row = m.get(d.clientId) || { invoice: 0, proforma: 0, total: 0 };
+      if (d.docType === 'proforma') row.proforma += 1; else row.invoice += 1;
+      row.total += 1;
+      m.set(d.clientId, row);
     }
     return m;
   }, [invoices]);
+
+  const countsFor = (id) => invoiceCounts.get(id) || { invoice: 0, proforma: 0, total: 0 };
+
+  /**
+   * Every document each client has, newest first. Built from the documents this
+   * user is allowed to see, so the expanded history never reveals more than the
+   * Invoices page itself would.
+   */
+  const docsByClient = useMemo(() => {
+    const m = new Map();
+    for (const d of visibleDocsFor(invoices, currentUser)) {
+      if (!d.clientId) continue;
+      if (!m.has(d.clientId)) m.set(d.clientId, []);
+      m.get(d.clientId).push(d);
+    }
+    for (const arr of m.values()) {
+      arr.sort((a, b) => (parseDateValue(b.invoiceDate) || 0) - (parseDateValue(a.invoiceDate) || 0));
+    }
+    return m;
+  }, [invoices, currentUser]);
 
   // Each client's regions, derived from the branches of their invoices. A client
   // can be in India, Dubai, both, or neither (no invoices yet).
@@ -57,7 +86,7 @@ export default function ClientsPage({ initialRegion, onAdd, onEdit, onDelete, on
     email: (c) => c.email || '',
     phone: (c) => c.phone || '',
     address: (c) => c.address || '',
-    invoiceCount: (c) => invoiceCounts.get(c.id) || 0
+    invoiceCount: (c) => countsFor(c.id).total
   };
 
   // Branch access first — non-admins only see clients tied to their allowed
@@ -155,14 +184,27 @@ export default function ClientsPage({ initialRegion, onAdd, onEdit, onDelete, on
                 </div>
               </td></tr>
             ) : list.map((c) => {
-              const count = invoiceCounts.get(c.id) || 0;
+              const counts = countsFor(c.id);
               const addr = c.address || '';
+              const isOpen = expandedId === c.id;
+              const clientDocs = docsByClient.get(c.id) || [];
               return (
-                <tr key={c.id}>
+                <Fragment key={c.id}>
+                <tr className={isOpen ? 'client-row-open' : undefined}>
                   <td>
-                    <strong>{c.name}</strong>
+                    <button
+                      type="button"
+                      className="client-name-toggle"
+                      onClick={() => setExpandedId(isOpen ? null : c.id)}
+                      title={counts.total
+                        ? (isOpen ? 'Hide' : 'Show') + ' the ' + counts.total + ' document' + (counts.total === 1 ? '' : 's') + ' raised for ' + c.name
+                        : 'No documents raised for ' + c.name + ' yet'}
+                    >
+                      <span className={'client-caret' + (isOpen ? ' open' : '')}>▸</span>
+                      <strong>{c.name}</strong>
+                    </button>
                     {c.legalName && c.legalName !== c.name && (
-                      <div style={{ fontSize: 9.1, color: 'var(--muted)' }}>{c.legalName}</div>
+                      <div style={{ fontSize: 9.1, color: 'var(--muted)', paddingLeft: 16 }}>{c.legalName}</div>
                     )}
                   </td>
                   <td style={{ fontSize: 10, fontFamily: 'monospace' }}>{c.gstin || '-'}</td>
@@ -177,7 +219,32 @@ export default function ClientsPage({ initialRegion, onAdd, onEdit, onDelete, on
                   <td style={{ fontSize: 10, color: 'var(--muted)', maxWidth: 280 }}>
                     {addr.substring(0, 80)}{addr.length > 80 ? '…' : ''}
                   </td>
-                  <td>{count}</td>
+                  <td style={{ whiteSpace: 'nowrap' }}>
+                    {counts.total === 0 ? (
+                      <span style={{ color: 'var(--muted)' }}>—</span>
+                    ) : (
+                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                        {counts.invoice > 0 && (
+                          <button
+                            type="button" className="doc-count invoice"
+                            onClick={() => onOpenDocuments && onOpenDocuments('invoices', c.id)}
+                            title={'Open the ' + counts.invoice + ' tax invoice' + (counts.invoice === 1 ? '' : 's') + ' raised for ' + c.name}
+                          >
+                            {counts.invoice} Tax
+                          </button>
+                        )}
+                        {counts.proforma > 0 && (
+                          <button
+                            type="button" className="doc-count proforma"
+                            onClick={() => onOpenDocuments && onOpenDocuments('proforma', c.id)}
+                            title={'Open the ' + counts.proforma + ' proforma' + (counts.proforma === 1 ? '' : 's') + ' raised for ' + c.name}
+                          >
+                            {counts.proforma} Pro
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </td>
                   <td>
                     <div className="actions-cell">
                       {may('edit') && <button className="icon-btn edit" onClick={() => onEdit(c.id)} title="Edit">✏️</button>}
@@ -185,6 +252,76 @@ export default function ClientsPage({ initialRegion, onAdd, onEdit, onDelete, on
                     </div>
                   </td>
                 </tr>
+
+                {isOpen && (
+                  <tr className="client-docs-row">
+                    <td colSpan={COLUMNS.length + 1}>
+                      <div className="client-docs">
+                        <div className="client-docs-head">
+                          <strong>{c.name}</strong>
+                          <span>
+                            {counts.total === 0
+                              ? 'No documents raised yet'
+                              : counts.invoice + ' tax invoice' + (counts.invoice === 1 ? '' : 's') +
+                                ' · ' + counts.proforma + ' proforma' + (counts.proforma === 1 ? '' : 's')}
+                          </span>
+                          {clientDocs.length > 0 && (
+                            <button type="button" className="client-docs-open"
+                              onClick={() => onOpenDocuments && onOpenDocuments('invoices', c.id)}>
+                              Open in Invoices →
+                            </button>
+                          )}
+                        </div>
+
+                        {clientDocs.length === 0 ? (
+                          <div className="client-docs-empty">
+                            Nothing raised for this client yet
+                            {counts.total > 0 ? ' that you have access to.' : '.'}
+                          </div>
+                        ) : (
+                          <table className="client-docs-table">
+                            <thead>
+                              <tr>
+                                <th>Document No</th><th>Type</th><th>Date</th><th>Description</th>
+                                <th>Branch</th><th style={{ textAlign: 'right' }}>Total</th><th>Status</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {clientDocs.map((d) => {
+                                const badge = statusBadgeOf(d, invoices);
+                                return (
+                                  <tr key={d.id}
+                                    onClick={() => onOpenDocuments && onOpenDocuments(d.docType === 'proforma' ? 'proforma' : 'invoices', c.id)}
+                                    title={'Open ' + (d.invoiceNo || 'this document') + ' in the ' +
+                                      (d.docType === 'proforma' ? 'Proforma' : 'Invoices') + ' list'}
+                                  >
+                                    <td><strong>{d.invoiceNo || '—'}</strong></td>
+                                    <td>
+                                      <span className={'badge ' + (d.docType === 'invoice' ? 'badge-invoice' : 'badge-proforma')}>
+                                        {d.docType === 'invoice' ? 'Invoice' : 'Proforma'}
+                                      </span>
+                                    </td>
+                                    <td>{fmtDate(d.invoiceDate)}</td>
+                                    <td>
+                                      {d.description || ''}
+                                      {d.subType && <span style={{ color: 'var(--muted)' }}> ({d.subType})</span>}
+                                    </td>
+                                    <td>{branchLabel(d.branch)}</td>
+                                    <td style={{ textAlign: 'right' }}>
+                                      <strong>{fmtMoneyForRegion(d.totalAmount, regionOf(d.branch))}</strong>
+                                    </td>
+                                    <td><span className={'badge ' + badge.cls}>{badge.label}</span></td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               );
             })}
           </tbody>

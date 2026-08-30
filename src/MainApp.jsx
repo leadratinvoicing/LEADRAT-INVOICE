@@ -59,6 +59,8 @@ export default function MainApp() {
   const [invoiceStatusFilter, setInvoiceStatusFilter] = useState('');
   const [docRegionFilter, setDocRegionFilter] = useState('');
   const [clientRegionFilter, setClientRegionFilter] = useState('');
+  // Set when the Clients page opens a list narrowed to one client's documents.
+  const [docClientFilter, setDocClientFilter] = useState('');
 
   // `prefill` seeds a new document from an existing one and `convertFrom` is the
   // proforma being reconciled — both empty for a plain new/edit.
@@ -103,7 +105,7 @@ export default function MainApp() {
    * `region` narrows a document list to India (Pune + Bengaluru) or Dubai, so a
    * dashboard card opened from the Dubai tab lands on Dubai documents only.
    */
-  const navigate = useCallback(async (next, filter, region) => {
+  const navigate = useCallback(async (next, filter, region, clientId) => {
     if (!userCanAccess(next)) {
       showToast('You do not have permission to access this section', 'error');
       return;
@@ -112,6 +114,7 @@ export default function MainApp() {
     if (next === 'invoices' || next === 'proforma') {
       setInvoiceStatusFilter(next === 'invoices' ? (filter || '') : '');
       setDocRegionFilter(region || '');
+      setDocClientFilter(clientId || '');
     } else if (next === 'clients') setClientRegionFilter(filter || '');
     // Refresh shared data so this tab sees anything created in other sessions.
     try {
@@ -941,6 +944,7 @@ export default function MainApp() {
             docType={page === 'invoices' ? 'invoice' : 'proforma'}
             initialStatus={page === 'invoices' ? invoiceStatusFilter : ''}
             initialRegion={docRegionFilter}
+            initialClientId={docClientFilter}
             onNew={openInvoiceForm}
             onPreview={previewDocument}
             onEdit={editInvoice}
@@ -964,6 +968,7 @@ export default function MainApp() {
             can={can}
             onDownloadTemplate={onDownloadClientTemplate}
             onBulkFile={handleClientBulkFile}
+            onOpenDocuments={(target, clientId) => navigate(target, '', '', clientId)}
           />
         )}
         {page === 'import' && (
