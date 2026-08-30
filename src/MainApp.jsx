@@ -680,7 +680,7 @@ export default function MainApp() {
       }
 
       const items = rowsForInvoice.map((r) => {
-        const baseDesc = r.description || (isDubai ? 'Leadrat CRM Software' : 'CRM Application');
+        const baseDesc = r.description || (isDubai ? 'Leadrat CRM Software' : 'Leadrat CRM Application');
         const subType = r.sub_type || '';
         return {
           description: baseDesc,

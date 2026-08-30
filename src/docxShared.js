@@ -84,3 +84,18 @@ export function buildFilename(d, ext) {
   const fnSub = safeFile((d.subType || d.description || '').toUpperCase());
   return fnPrefix + '-' + fnClient + (fnSub ? ' (' + fnSub + ')' : '') + '.' + (ext || 'docx');
 }
+
+/* ============================================================
+   PROFORMA NOTES
+   The India proforma carries a numbered Notes block. Both generators build it
+   from these strings so the Word and PDF versions can never drift apart.
+   TDS is an India-only mechanism, so the Dubai proforma does not show it.
+   ============================================================ */
+
+export const NOTE_ELECTRONIC = 'Electronically Generated Invoice No Signature Necessary.';
+
+export const NOTE_PROFORMA_TDS =
+  'TDS under Section 194J is applicable at 2% on technical services, as per applicable provisions of the Income Tax Act.';
+
+/** Point 1, point 2 — in the order they print on an India proforma. */
+export const PROFORMA_NOTES = [NOTE_ELECTRONIC, NOTE_PROFORMA_TDS];

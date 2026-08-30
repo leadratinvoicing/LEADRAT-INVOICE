@@ -2,7 +2,9 @@ import { jsPDF } from 'jspdf';
 import { APTOS_NARROW_BOLD, APTOS_NARROW_REGULAR } from './fonts/aptosNarrow';
 import { DUBAI_LOGO_DATA_URI, LOGO_DATA_URI } from './logo';
 import { aedToWords, fmtDate, numberToWords } from './utils';
-import { buildFilename, fmtMoneyAed, fmtMoneyDocx, titleCase } from './docxShared';
+import {
+  NOTE_ELECTRONIC, PROFORMA_NOTES, buildFilename, fmtMoneyAed, fmtMoneyDocx, titleCase
+} from './docxShared';
 
 /* ============================================================
    PDF GENERATION
@@ -460,7 +462,16 @@ function buildIndiaPdf(doc, d, co, bank) {
     T(isProforma ? 'Amount Due in Words: ' : 'Amount Paid in Words: ', { bold: true }),
     T(numberToWords(d.totalAmount))
   ]);
-  footerRows.push([T('Note: ', { bold: true }), T('Electronically Generated Invoice No Signature Necessary.')]);
+  // Proforma: a numbered Notes block in one cell. Tax invoice: the single line.
+  // Raw text throughout so "Section 194J" is not title-cased into "194j".
+  if (isProforma) {
+    footerRows.push([
+      [T('Notes: ', { bold: true }), T('1. ' + PROFORMA_NOTES[0], { raw: true })],
+      ...PROFORMA_NOTES.slice(1).map((note, i) => [T((i + 2) + '. ' + note, { raw: true })])
+    ]);
+  } else {
+    footerRows.push([T('Note: ', { bold: true }), T(NOTE_ELECTRONIC, { raw: true })]);
+  }
   footerRows.push([
     T('Terms & Conditions: ', { bold: true }),
     T('Clear payment within 15 days of receiving this invoice. There will be a 1.5% interest charge per month on late invoices. (Ignore If invoice is already cleared)')
@@ -468,7 +479,13 @@ function buildIndiaPdf(doc, d, co, bank) {
   if (isProforma) {
     footerRows.push([T('Payment Gateway: ', { bold: true }), T('Payments via payment gateways attract 2.5% transaction charges.')]);
   }
-  for (const runs of footerRows) r.row([cellOf([para(runs, { size: SZ.body })])], [CONTENT_W]);
+  for (const entry of footerRows) {
+    // An entry is either a run list (one paragraph) or a list of run lists.
+    const paras = Array.isArray(entry[0])
+      ? entry.map((runs) => para(runs, { size: SZ.body }))
+      : [para(entry, { size: SZ.body })];
+    r.row([cellOf(paras)], [CONTENT_W]);
+  }
 }
 
 /* ============================================================
@@ -598,9 +615,9 @@ function fractions(list) {
  */
 function allocateItems(d) {
   const itemRows = (Array.isArray(d.items) && d.items.length > 0) ? d.items : [{
-    description: d.description || 'CRM Application',
+    description: d.description || 'Leadrat CRM Application',
     subType: d.subType || '',
-    fullDescription: d.fullDescription || ((d.description || 'CRM Application') + (d.subType ? ' ' + d.subType : '')),
+    fullDescription: d.fullDescription || ((d.description || 'Leadrat CRM Application') + (d.subType ? ' ' + d.subType : '')),
     paymentDate: d.paymentDate,
     noOfLicense: d.noOfLicense,
     validity: d.validity,

@@ -5,7 +5,9 @@ import {
 import { saveAs } from 'file-saver';
 import { LOGO_DATA_URI } from './logo';
 import { fmtDate, numberToWords } from './utils';
-import { RUN_FONT, buildFilename, dataUriBytes, fmtMoneyDocx, titleCase } from './docxShared';
+import {
+  NOTE_ELECTRONIC, PROFORMA_NOTES, RUN_FONT, buildFilename, dataUriBytes, fmtMoneyDocx, titleCase
+} from './docxShared';
 import { generateDubaiDocx } from './dubaiDocx';
 
 /* ============================================================
@@ -220,9 +222,9 @@ export async function generateDocx(d, company) {
 
   // ---------- ITEMS TABLE ----------
   const itemRows = (Array.isArray(d.items) && d.items.length > 0) ? d.items : [{
-    description: d.description || 'CRM Application',
+    description: d.description || 'Leadrat CRM Application',
     subType: d.subType || '',
-    fullDescription: d.fullDescription || ((d.description || 'CRM Application') + (d.subType ? ' ' + d.subType : '')),
+    fullDescription: d.fullDescription || ((d.description || 'Leadrat CRM Application') + (d.subType ? ' ' + d.subType : '')),
     paymentDate: d.paymentDate,
     noOfLicense: d.noOfLicense,
     validity: d.validity,
@@ -450,9 +452,18 @@ export async function generateDocx(d, company) {
   footerRows.push(fullRow([
     RP([R(wordsLabel, { bold: true }), R(numberToWords(d.totalAmount))])
   ]));
-  footerRows.push(fullRow([
-    RP([R('Note: ', { bold: true }), R('Electronically Generated Invoice No Signature Necessary.')])
-  ]));
+  // A proforma carries a numbered Notes block; a tax invoice keeps the one line.
+  // Every note is raw — title-casing would turn "Section 194J" into "Section 194j".
+  if (isProforma) {
+    footerRows.push(fullRow([
+      RP([R('Notes: ', { bold: true }), R('1. ' + PROFORMA_NOTES[0], { raw: true })]),
+      ...PROFORMA_NOTES.slice(1).map((note, i) => RP([R((i + 2) + '. ' + note, { raw: true })]))
+    ]));
+  } else {
+    footerRows.push(fullRow([
+      RP([R('Note: ', { bold: true }), R(NOTE_ELECTRONIC, { raw: true })])
+    ]));
+  }
   const termsRuns = [
     R('Terms & Conditions: ', { bold: true }),
     R('Clear payment within 15 days of receiving this invoice. There will be a 1.5% interest charge per month on late invoices. (Ignore If invoice is already cleared)')

@@ -13,7 +13,7 @@ import {
 function blankItem() {
   const today = new Date().toISOString().slice(0, 10);
   return {
-    description: 'CRM Application',
+    description: 'Leadrat CRM Application',
     subType: 'New',
     subTypeOther: '',
     paymentDate: today,
@@ -143,7 +143,7 @@ export default function InvoiceModal({
         }
         const st = isOthers ? 'Others' : (src.subType || 'New');
         return {
-          description: src.description || 'CRM Application',
+          description: src.description || 'Leadrat CRM Application',
           subType: st,
           subTypeOther: isOthers ? src.subType : '',
           paymentDate: dateToInput(src.paymentDate) || '',
@@ -422,7 +422,7 @@ export default function InvoiceModal({
       if (st === 'Others') st = (it.subTypeOther || '').trim() || 'Others';
       const total = parseFloat(it.totalAmount) || 0;
       const net = total > 0 ? Math.round((total / (1 + docRate / 100)) * 100) / 100 : 0;
-      const desc = String(it.description || 'CRM Application').trim();
+      const desc = String(it.description || 'Leadrat CRM Application').trim();
       return {
         description: desc,
         subType: st,
@@ -644,7 +644,7 @@ export default function InvoiceModal({
           <div className="form-group">
             <label className="form-label">HSN/SAC</label>
             <input type="text" className="form-input" value={hsn} readOnly style={{ background: '#F3F4F6', cursor: 'not-allowed' }} />
-            <div className="password-hint">Fixed for CRM Application services</div>
+            <div className="password-hint">Fixed for Leadrat CRM Application services</div>
           </div>
         )}
         {gstApplicable !== 'no' && (
@@ -699,7 +699,7 @@ export default function InvoiceModal({
             <div className="form-grid">
               <div className="form-group">
                 <label className="form-label">Description <span className="req">*</span></label>
-                <input type="text" className="form-input" placeholder="e.g., CRM Application"
+                <input type="text" className="form-input" placeholder="e.g., Leadrat CRM Application"
                   value={it.description} onChange={(e) => updateItem(idx, 'description', e.target.value)} />
               </div>
               <div className="form-group">
