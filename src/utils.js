@@ -621,3 +621,66 @@ export function resolveUserSession(profile, roles) {
     dataScope: effectiveDataScope(profile, roles)
   };
 }
+
+/* ============================================================
+   PER-ITEM TAX BREAKDOWN
+   The single source of truth for splitting a line's Total (which the user
+   types) into Net + tax. Everything — the form's running totals, the stored
+   document, the Word file and the PDF — derives from this one function, so a
+   printed row can never disagree with what was entered.
+
+   Each split is exact by construction:
+     net + tax   === total   (tax is the remainder, not a second rounding)
+     cgst + sgst === tax     (sgst is the remainder, not total/2 twice)
+   Summing the rows therefore reproduces the document totals to the paisa.
+   ============================================================ */
+
+export function itemTaxBreakdown(totalAmount, rate, gstType) {
+  const total = round2(totalAmount);
+  const r = (parseFloat(rate) || 0) / 100;
+  if (total <= 0) return { total: 0, net: 0, cgst: 0, sgst: 0, igst: 0, tax: 0 };
+  const net = round2(total / (1 + r));
+  // The remainder, so the row always adds up regardless of how net rounded.
+  const tax = round2(total - net);
+  if (gstType === 'igst') return { total, net, cgst: 0, sgst: 0, igst: tax, tax };
+  const cgst = round2(tax / 2);
+  const sgst = round2(tax - cgst);
+  return { total, net, cgst, sgst, igst: 0, tax };
+}
+
+/**
+ * Every line of a document, each with its own exact breakdown, plus the
+ * document totals as the sum of those lines. Generators use this so the rows
+ * they print and the totals they print come from the same arithmetic.
+ */
+export function documentItemBreakdown(doc) {
+  const rate = parseFloat(doc.gstRate) || (doc.branch === 'dubai' ? 5 : 18);
+  const gstType = doc.gstType || 'cgst_sgst';
+  const rows = (Array.isArray(doc.items) && doc.items.length > 0) ? doc.items : [doc];
+
+  const items = rows.map((it) => {
+    // A line saved with its own Total is authoritative — that is what was typed.
+    const hasTotal = it.totalAmount !== undefined && it.totalAmount !== null && it.totalAmount !== '';
+    if (hasTotal) {
+      const b = itemTaxBreakdown(it.totalAmount, rate, gstType);
+      return { ...it, netAmount: b.net, cgst: b.cgst, sgst: b.sgst, igst: b.igst, lineTotal: b.total };
+    }
+    // Legacy line with only a net amount — rebuild the tax from the rate.
+    const net = round2(it.netAmount);
+    const tax = round2(net * rate / 100);
+    const cgst = gstType === 'igst' ? 0 : round2(tax / 2);
+    const sgst = gstType === 'igst' ? 0 : round2(tax - cgst);
+    const igst = gstType === 'igst' ? tax : 0;
+    return { ...it, netAmount: net, cgst, sgst, igst, lineTotal: round2(net + tax) };
+  });
+
+  const sum = (k) => round2(items.reduce((s, x) => s + (+x[k] || 0), 0));
+  return {
+    items,
+    net: sum('netAmount'),
+    cgst: sum('cgst'),
+    sgst: sum('sgst'),
+    igst: sum('igst'),
+    total: sum('lineTotal')
+  };
+}

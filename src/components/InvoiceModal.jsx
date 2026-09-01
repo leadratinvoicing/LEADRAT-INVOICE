@@ -7,7 +7,8 @@ import {
   PAYMENT_MODES, SUBTYPE_OPTIONS, VALIDITY_OPTIONS
 } from '../constants';
 import {
-  dateToInput, fmtMoneyForRegion, MONEY_EPS, nextDocNumber, proformaState, regionOf, round2
+  dateToInput, fmtMoneyForRegion, itemTaxBreakdown, MONEY_EPS, nextDocNumber, proformaState,
+  regionOf, round2
 } from '../utils';
 
 function blankItem() {
@@ -244,23 +245,23 @@ export default function InvoiceModal({
      Each item: user enters Total (incl. tax). Net = Total / (1 + rate/100). */
   const calc = useMemo(() => {
     const rate = parseFloat(gstRate) || (isDubai ? 5 : 18);
-    let totalSum = 0, netSum = 0, gstSum = 0;
-    for (const it of items) {
-      const total = parseFloat(it.totalAmount) || 0;
-      if (total <= 0) continue;
-      const net = total / (1 + rate / 100);
-      totalSum += total;
-      netSum += net;
-      gstSum += total - net;
-    }
-    const useIgstSlot = gstType === 'igst';
+    // Sum the SAME per-line breakdown the invoice will print, rather than
+    // rounding a running total. Doing it this way is what makes the document
+    // totals equal the sum of the printed rows to the paisa.
+    const rows = items
+      .map((it) => itemTaxBreakdown(it.totalAmount, rate, gstType))
+      .filter((r) => r.total > 0);
+    const sum = (k) => round2(rows.reduce((s, r) => s + r[k], 0));
+    const totalSum = sum('total');
+    const netSum = sum('net');
+    const tdsVal = round2(netSum * (parseFloat(tdsRate) || 0) / 100);
     return {
       total: totalSum ? totalSum.toFixed(2) : '',
       net: netSum ? netSum.toFixed(2) : '',
-      cgst: (useIgstSlot ? 0 : gstSum / 2).toFixed(2),
-      sgst: (useIgstSlot ? 0 : gstSum / 2).toFixed(2),
-      igst: (useIgstSlot ? gstSum : 0).toFixed(2),
-      tds: (netSum * (parseFloat(tdsRate) || 0) / 100) ? (netSum * (parseFloat(tdsRate) || 0) / 100).toFixed(2) : ''
+      cgst: sum('cgst').toFixed(2),
+      sgst: sum('sgst').toFixed(2),
+      igst: sum('igst').toFixed(2),
+      tds: tdsVal ? tdsVal.toFixed(2) : ''
     };
   }, [items, gstRate, gstType, tdsRate, isDubai]);
 
@@ -421,7 +422,8 @@ export default function InvoiceModal({
       const balanceOnly = isBalanceOnly(it.subType);
       if (st === 'Others') st = (it.subTypeOther || '').trim() || 'Others';
       const total = parseFloat(it.totalAmount) || 0;
-      const net = total > 0 ? Math.round((total / (1 + docRate / 100)) * 100) / 100 : 0;
+      const split = itemTaxBreakdown(total, docRate, gstType);
+      const net = split.net;
       const desc = String(it.description || 'Leadrat CRM Application').trim();
       return {
         description: desc,
@@ -431,7 +433,11 @@ export default function InvoiceModal({
         noOfLicense: balanceOnly ? '' : String(it.noOfLicense || '').trim(),
         validity: balanceOnly ? '' : it.validity,
         totalAmount: total,
-        netAmount: net
+        netAmount: net,
+        // The line's own tax, stored so Word and PDF print exactly this.
+        cgst: split.cgst,
+        sgst: split.sgst,
+        igst: split.igst
       };
     });
     const first = finalItems[0];

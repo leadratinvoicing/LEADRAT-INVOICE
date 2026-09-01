@@ -613,6 +613,11 @@ function fractions(list) {
  * Spread the document's tax and total across its line items exactly as the Word
  * generator does, so both formats show identical per-line figures.
  */
+/**
+ * Each line's printed figures. They come straight from what was entered — the
+ * line Total and its own tax split — so a row never disagrees with the input,
+ * and the rows always add up to the document total.
+ */
 function allocateItems(d) {
   const itemRows = (Array.isArray(d.items) && d.items.length > 0) ? d.items : [{
     description: d.description || 'Leadrat CRM Application',
@@ -621,30 +626,8 @@ function allocateItems(d) {
     paymentDate: d.paymentDate,
     noOfLicense: d.noOfLicense,
     validity: d.validity,
-    netAmount: +d.netAmount || 0
+    netAmount: +d.netAmount || 0,
+    totalAmount: d.totalAmount
   }];
-
-  const totalNet = itemRows.reduce((s, it) => s + (+it.netAmount || 0), 0);
-  const totCgst = +d.cgst || 0, totSgst = +d.sgst || 0, totIgst = +d.igst || 0;
-  const docTotal = +d.totalAmount || 0;
-
-  const allocate = (total, idx, isLast, accumulated) => {
-    if (totalNet <= 0) return 0;
-    if (isLast) return Math.round((total - accumulated) * 100) / 100;
-    return Math.round(((+itemRows[idx].netAmount || 0) / totalNet) * total * 100) / 100;
-  };
-
-  let cgstAcc = 0, sgstAcc = 0, igstAcc = 0, lineTotalAcc = 0;
-  return itemRows.map((it, i) => {
-    const isLast = i === itemRows.length - 1;
-    const cgst = allocate(totCgst, i, isLast, cgstAcc);
-    const sgst = allocate(totSgst, i, isLast, sgstAcc);
-    const igst = allocate(totIgst, i, isLast, igstAcc);
-    cgstAcc += cgst; sgstAcc += sgst; igstAcc += igst;
-    const lineTotal = isLast
-      ? Math.round((docTotal - lineTotalAcc) * 100) / 100
-      : Math.round(((+it.netAmount || 0) + cgst + sgst + igst) * 100) / 100;
-    lineTotalAcc += lineTotal;
-    return { ...it, cgst, sgst, igst, lineTotal };
-  });
+  return documentItemBreakdown({ ...d, items: itemRows }).items;
 }

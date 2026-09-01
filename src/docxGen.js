@@ -4,7 +4,7 @@ import {
 } from 'docx';
 import { saveAs } from 'file-saver';
 import { LOGO_DATA_URI } from './logo';
-import { fmtDate, numberToWords } from './utils';
+import { documentItemBreakdown, fmtDate, numberToWords } from './utils';
 import {
   NOTE_ELECTRONIC, PROFORMA_NOTES, RUN_FONT, buildFilename, dataUriBytes, fmtMoneyDocx, titleCase
 } from './docxShared';
@@ -228,34 +228,14 @@ export async function generateDocx(d, company) {
     paymentDate: d.paymentDate,
     noOfLicense: d.noOfLicense,
     validity: d.validity,
-    netAmount: +d.netAmount || 0
+    netAmount: +d.netAmount || 0,
+    totalAmount: d.totalAmount
   }];
 
-  const totalNet = itemRows.reduce((s, it) => s + (+it.netAmount || 0), 0);
-  const totCgst = +d.cgst || 0, totSgst = +d.sgst || 0, totIgst = +d.igst || 0;
-  function allocate(total, idx, isLast, proportional) {
-    if (totalNet <= 0) return 0;
-    if (isLast) return Math.round((total - proportional) * 100) / 100;
-    return Math.round(((+itemRows[idx].netAmount || 0) / totalNet) * total * 100) / 100;
-  }
-  let cgstAcc = 0, sgstAcc = 0, igstAcc = 0, lineTotalAcc = 0;
-  const docTotal = +d.totalAmount || 0;
-  const perItem = itemRows.map((it, i) => {
-    const isLast = i === itemRows.length - 1;
-    const cgst = allocate(totCgst, i, isLast, cgstAcc);
-    const sgst = allocate(totSgst, i, isLast, sgstAcc);
-    const igst = allocate(totIgst, i, isLast, igstAcc);
-    cgstAcc += cgst; sgstAcc += sgst; igstAcc += igst;
-    let lineTotal;
-    if (isLast) {
-      lineTotal = Math.round((docTotal - lineTotalAcc) * 100) / 100;
-    } else {
-      lineTotal = Math.round(((+it.netAmount || 0) + cgst + sgst + igst) * 100) / 100;
-    }
-    lineTotalAcc += lineTotal;
-    return { ...it, cgst, sgst, igst, lineTotal };
-  });
-
+  // Each line carries its own Total and tax split, so the row that prints is
+  // literally the row that was entered. Nothing is re-derived from document
+  // totals and no line absorbs a rounding remainder.
+  const perItem = documentItemBreakdown({ ...d, items: itemRows }).items;
   let itemsTable;
   if (isProforma) {
     const cols = [
