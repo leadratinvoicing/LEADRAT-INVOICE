@@ -6,7 +6,7 @@ import { generateDocx } from './docxGen';
 import { generatePdf } from './pdfGen';
 import {
   downloadClientTemplate, downloadDubaiTemplate, downloadInvoiceTemplate,
-  exportInvoicesToExcel, normaliseBranch, pickCol, readSheetRows
+  exportDocuments, normaliseBranch, pickCol, readSheetRows
 } from './excelOps';
 import { buildRestorePrompt, downloadBackupFile, parseBackupFile } from './backupOps';
 import { NUMBER_SERIES } from './constants';
@@ -226,12 +226,23 @@ export default function MainApp() {
     }
   }
 
-  function exportToExcel(docType) {
+  /**
+   * `rows` is what the list is actually showing, so an export matches the
+   * filters on screen. Falls back to everything of that type this user may see.
+   */
+  function exportToExcel(docType, format, rows) {
     if (!can(modOf(docType), 'export')) return deny('export this data');
-    const list = visibleDocsFor(stateRef.current.invoices, currentUser).filter((d) => d.docType === docType);
+    const list = (rows && rows.length)
+      ? rows
+      : visibleDocsFor(stateRef.current.invoices, currentUser).filter((d) => d.docType === docType);
     if (list.length === 0) return showToast('No data to export', 'warn');
-    exportInvoicesToExcel(list, docType, stateRef.current.invoices);
-    showToast('Exported');
+    try {
+      const fname = exportDocuments(list, docType, stateRef.current.invoices, format || 'xlsx');
+      showToast('Exported ' + list.length + ' row' + (list.length === 1 ? '' : 's') + ' to ' + fname);
+    } catch (e) {
+      console.error(e);
+      showToast('Export failed: ' + (e.message || e), 'error');
+    }
   }
 
   async function saveInvoiceDoc(doc, downloadAs, setBadField) {

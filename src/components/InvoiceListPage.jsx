@@ -6,6 +6,7 @@ import {
   parseDateValue, pendingOf, proformaState, receivedOf, regionOf, sameEmail, statusBadgeOf, visibleDocsFor
 } from '../utils';
 import ColumnPicker, { loadColumnPrefs } from './ColumnPicker';
+import ExportMenu from './ExportMenu';
 import DateRangeFilter from './DateRangeFilter';
 import { PdfIcon, WordIcon } from './FileIcons';
 import SortableTh, { sortRows, useSort } from './SortableTh';
@@ -222,7 +223,11 @@ export default function InvoiceListPage({
         </div>
         <div className="page-actions">
           {may('export') && (
-            <button className="btn btn-secondary" onClick={() => onExport(docType)}>Export Excel</button>
+            <ExportMenu
+              count={list.length}
+              disabled={list.length === 0}
+              onExport={(fmt) => onExport(docType, fmt, list)}
+            />
           )}
           {may('create') && (
             <button className="btn btn-primary" onClick={() => onNew(docType)}>+ New {isInvoice ? 'Invoice' : 'Proforma'}</button>

@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx';
+import { saveAs } from 'file-saver';
 import { fmtDate, pendingOf, receivedOf } from './utils';
 
 /* ============================================================
@@ -99,7 +100,7 @@ export function normaliseBranch(raw) {
  * `allDocs` is the full document set — a proforma's pending amount depends on the
  * tax invoices raised from it, which may sit outside the exported slice.
  */
-export function exportInvoicesToExcel(list, docType, allDocs) {
+export function buildExportRows(list, docType, allDocs) {
   const scope = allDocs || list;
   const data = list.map((d) => ({
     doc_type: d.docType,
@@ -132,10 +133,54 @@ export function exportInvoicesToExcel(list, docType, allDocs) {
     raised_against_proforma: d.docType === 'proforma' ? '' : (d.sourceProformaNo || ''),
     due_date: fmtDate(d.dueDate)
   }));
-  const wb = XLSX.utils.book_new();
+  return data;
+}
+
+/** The formats the Export menu offers. `ext` doubles as the format key. */
+export const EXPORT_FORMATS = [
+  { ext: 'xlsx', label: 'Excel', hint: 'Spreadsheet — opens in Excel or Google Sheets', icon: '📊' },
+  { ext: 'csv', label: 'CSV', hint: 'Plain text, comma separated — imports anywhere', icon: '📄' },
+  { ext: 'json', label: 'JSON', hint: 'Structured data — for developers and integrations', icon: '{ }' }
+];
+
+/**
+ * Export the given documents in one of EXPORT_FORMATS. Every format is built
+ * from the SAME row set as the spreadsheet, so switching format changes the
+ * container and never the content. Returns the filename written.
+ */
+export function exportDocuments(list, docType, allDocs, format) {
+  const data = buildExportRows(list, docType, allDocs);
+  const sheetName = docType === 'invoice' ? 'Invoices' : 'Proformas';
+  const base = 'Leadrat_' + sheetName + '_Export';
+  const fmt = (format || 'xlsx').toLowerCase();
+
+  if (fmt === 'json') {
+    // Pretty-printed and wrapped with a little context, so the file explains
+    // itself when it turns up somewhere else months later.
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      docType,
+      count: data.length,
+      rows: data
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
+    saveAs(blob, base + '.json');
+    return base + '.json';
+  }
+
   const ws = XLSX.utils.json_to_sheet(data);
-  XLSX.utils.book_append_sheet(wb, ws, docType === 'invoice' ? 'Invoices' : 'Proformas');
-  XLSX.writeFile(wb, 'Leadrat_' + (docType === 'invoice' ? 'Invoices' : 'Proformas') + '_Export.xlsx');
+  if (fmt === 'csv') {
+    // A BOM so Excel opens UTF-8 correctly — without it ₹ and accents mangle.
+    const csv = XLSX.utils.sheet_to_csv(ws);
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+    saveAs(blob, base + '.csv');
+    return base + '.csv';
+  }
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  XLSX.writeFile(wb, base + '.xlsx');
+  return base + '.xlsx';
 }
 
 /**
