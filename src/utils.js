@@ -362,6 +362,22 @@ export function receivedOf(d) {
  * converted: raising the tax invoice does not make the money arrive, only the
  * receipt recorded on that invoice does.
  */
+/**
+ * The balance typed on a tax invoice's Payment Status, or null when none was
+ * entered. This is the figure the document prints as "Amount Due", so it is
+ * also the figure the lists and dashboards must report — a token invoice may
+ * bill ₹5,000 while ₹1,86,160 is still owed on the wider deal, and deriving
+ * the balance from this invoice's own total would contradict what was printed.
+ */
+export function enteredOutstandingOf(d) {
+  if (!d || d.docType === 'proforma') return null;
+  if ((d.status || 'due') !== 'due') return null;
+  const v = d.amountDueOutstanding;
+  if (v === undefined || v === null || v === '') return null;
+  const n = round2(v);
+  return isNaN(n) ? null : Math.max(0, n);
+}
+
 export function pendingOf(d, invoices) {
   const total = round2(d.totalAmount);
   if (d.docType === 'proforma') {
@@ -370,6 +386,9 @@ export function pendingOf(d, invoices) {
     if (linked.length === 0) return d.convertedToInvoiceId ? 0 : total;
     return Math.max(0, round2(total - linked.reduce((s, x) => s + receivedOf(x), 0)));
   }
+  // An entered balance wins over anything derived from this invoice's total.
+  const entered = enteredOutstandingOf(d);
+  if (entered !== null) return entered;
   return Math.max(0, round2(total - receivedOf(d)));
 }
 
