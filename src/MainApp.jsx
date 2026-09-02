@@ -15,6 +15,7 @@ import {
   nextAvailableNumber, nextDocNumber, pad, proformaState, receivedOf, regionOf, round2,
   sameEmail, seriesConfig, seriesKeyFor, uid, visibleDocsFor
 } from './utils';
+import { advanceCounter, findDuplicateNumber, suggestDocNumber, syncCounters } from './numbering';
 
 import Dashboard from './components/Dashboard';
 import InvoiceListPage from './components/InvoiceListPage';
@@ -28,6 +29,7 @@ import ClientBulkModal from './components/ClientBulkModal';
 import UserModal from './components/UserModal';
 import CreateUserModal from './components/CreateUserModal';
 import AssignModal from './components/AssignModal';
+import ConvertModal from './components/ConvertModal';
 import ForcePasswordModal from './components/ForcePasswordModal';
 import UserDetailsModal from './components/UserDetailsModal';
 import TdsModal from './components/TdsModal';
@@ -51,7 +53,7 @@ export default function MainApp() {
     saveInvoices, saveClients, saveUsers, saveNumbering,
     reloadInvoices, reloadClients, reloadUsers, reloadRoles,
     buildBackupPayload, restoreBackup,
-    clearSession, userCanAccess, refreshSessionUser, showToast
+    appendAudit, clearSession, userCanAccess, refreshSessionUser, showToast
   } = useApp();
 
   const [page, setPage] = useState('dashboard');
@@ -70,6 +72,8 @@ export default function MainApp() {
   const [userModal, setUserModal] = useState({ open: false, email: null });
   const [createUserOpen, setCreateUserOpen] = useState(false);
   const [assignModal, setAssignModal] = useState({ open: false, id: null });
+  // The proforma awaiting a chosen tax invoice number before it converts.
+  const [convertModal, setConvertModal] = useState({ open: false, id: null });
   const [userDetails, setUserDetails] = useState({ open: false, email: null });
   const [tdsOpen, setTdsOpen] = useState(false);
   // `doc` may be an unsaved draft from the form; `sourceId` is set when the
@@ -279,24 +283,20 @@ export default function MainApp() {
       d.assignedTo = d.assignedTo || '';
     }
     d.updatedBy = me.name || me.email || '';
-
     // === DUPLICATE PROTECTION ===
     const clash = latest.find((x) => x.invoiceNo === d.invoiceNo && x.id !== d.id);
     if (clash) {
-      if (!isNew) {
+      // A number typed on purpose — an edit, or one picked in the convert
+      // dialog — is reported, never quietly changed underneath the user.
+      if (!isNew || d.numberEdited || d.autoSuggestedNo) {
         showToast('Invoice number "' + d.invoiceNo + '" already exists for ' + (clash.clientName || 'another invoice') + '. Please use a unique number.', 'error');
         setBadField('frmInvoiceNo');
         return;
       }
-      // New invoice — auto-bump to the next available number on the actual prefix.
-      const cfg = seriesConfig(stateRef.current.numbering, seriesKeyFor(d.docType, d.branch));
-      let { prefix, pad: padLen, suffix } = cfg;
-      // A hand-typed number outside the configured series keeps its own shape.
-      if (!d.invoiceNo.startsWith(prefix)) {
-        const m = d.invoiceNo.match(/^(.*?)(\d+)(\D*)$/);
-        if (m) { prefix = m[1]; padLen = m[2].length; suffix = m[3]; }
-      }
-      d.invoiceNo = prefix + pad(nextAvailableNumber(latest, prefix, 1), padLen) + suffix;
+      // Untouched auto-fill — another session took it first. Step to the next
+      // free number rather than blocking on a race the user did not cause.
+      const nextFree = suggestDocNumber(stateRef.current.numbering, latest, d.docType, d.branch);
+      d.invoiceNo = nextFree;
       showToast('Invoice number was bumped to ' + d.invoiceNo + ' to prevent a duplicate.', 'warn');
     }
 
@@ -358,6 +358,7 @@ export default function MainApp() {
     // Stamp the proforma this tax invoice reconciles. Pending amounts are always
     // derived from the linked invoices, so these fields are only for display.
     let reconciled = null;
+    let auditEntry = null;
     if (d.docType === 'invoice' && d.sourceProformaId) {
       const idx = nextInvoices.findIndex((x) => x.id === d.sourceProformaId && x.docType === 'proforma');
       if (idx !== -1) {
@@ -371,19 +372,32 @@ export default function MainApp() {
         };
         nextInvoices[idx] = stamped;
         reconciled = { proforma: stamped, state: proformaState(stamped, nextInvoices) };
+        // Record how this number was arrived at, so the trail can show
+        // whether it was the suggestion or a deliberate override.
+        auditEntry = {
+          action: 'pi_converted',
+          invoiceId: d.id,
+          details: {
+            fromProformaId: source.id,
+            fromProformaNo: source.invoiceNo,
+            toInvoiceNo: d.invoiceNo,
+            autoSuggested: d.autoSuggestedNo || d.invoiceNo,
+            wasCustomNumber: !!d.autoSuggestedNo && d.autoSuggestedNo !== d.invoiceNo
+          }
+        };
       }
     }
 
     if (isNew) {
+      // Move this series past the number just used, then make sure no counter
+      // sits below what is already stored. Counters only ever move forward.
       const n = stateRef.current.numbering;
-      const bumped = { ...n };
-      for (const s of NUMBER_SERIES) {
-        const c = seriesConfig(n, s.key);
-        bumped[s.nextKey] = nextAvailableNumber(nextInvoices, c.prefix, c.next);
-      }
-      await saveNumbering(bumped);
+      const advanced = advanceCounter(n, d.invoiceNo, d.docType, d.branch);
+      const synced = syncCounters(advanced, nextInvoices);
+      if (JSON.stringify(synced) !== JSON.stringify(n)) await saveNumbering(synced);
     }
     await saveInvoices(nextInvoices);
+    if (auditEntry) await appendAudit(auditEntry);
 
     setInvoiceModal(CLOSED_INVOICE_MODAL);
     if (reconciled) {
@@ -421,7 +435,45 @@ export default function MainApp() {
    * A proforma can be invoiced in parts — every tax invoice carries
    * `sourceProformaId`, and whatever those invoices do not cover stays pending.
    */
+  /**
+   * Converting asks for the tax invoice number first. The suggestion is the next
+   * FREE number in the branch series, but an admin may type any unused number —
+   * to match a physical book, say. Nothing is created until they confirm.
+   */
   async function startProformaConversion(proformaId) {
+    if (!can('invoices', 'create')) return deny('create tax invoices');
+    const latest = await reloadInvoices();
+    const p = latest.find((x) => x.id === proformaId);
+    if (!p || p.docType !== 'proforma') return showToast('Proforma not found', 'error');
+
+    const st = proformaState(p, latest);
+    if (st.unbilled <= MONEY_EPS) {
+      const last = st.linked[st.linked.length - 1] || null;
+      return showToast('Proforma ' + p.invoiceNo + ' is already fully invoiced' +
+        (last ? ' (' + last.invoiceNo + ')' : '') +
+        (st.pending > MONEY_EPS
+          ? ' — record the balance received on that tax invoice instead.'
+          : '. Edit or delete that tax invoice to redo it.'), 'error');
+    }
+    setTdsOpen(false);
+    setConvertModal({ open: true, id: proformaId });
+  }
+
+  /** Number accepted — open the invoice form seeded with it. */
+  async function confirmConvertProforma(chosenNumber, suggestedNumber) {
+    const id = convertModal.id;
+    const latest = await reloadInvoices();
+    // Re-check at confirm time: another session may have taken the number.
+    const clash = findDuplicateNumber(latest, chosenNumber);
+    if (clash) {
+      return showToast('Invoice number ' + chosenNumber + ' was just used by ' +
+        (clash.clientName || 'another document') + '. Pick another.', 'error');
+    }
+    setConvertModal({ open: false, id: null });
+    await openConversionForm(id, chosenNumber, suggestedNumber);
+  }
+
+  async function openConversionForm(proformaId, chosenNumber, suggestedNumber) {
     if (!userCanAccess('invoices', 'create')) {
       return showToast('You do not have permission to create tax invoices', 'error');
     }
@@ -445,7 +497,10 @@ export default function MainApp() {
       ...deepClone(p),
       id: null,
       docType: 'invoice',
-      invoiceNo: nextDocNumber(stateRef.current.numbering, latest, 'invoice', branch),
+      invoiceNo: chosenNumber,
+      // Carried onto the saved document so the audit trail can record whether
+      // the number was the suggestion or a deliberate override.
+      autoSuggestedNo: suggestedNumber || chosenNumber,
       invoiceDate: today,
       paymentMode: p.paymentMode || (branch === 'dubai' ? 'BANK TRANSFER' : 'NEFT'),
       // Converting normally means the money has arrived; the form's Payment
@@ -885,6 +940,7 @@ export default function MainApp() {
   const selectedUser = userModal.email ? users.find((u) => u.email === userModal.email) : null;
   const detailsUser = userDetails.email ? users.find((u) => u.email === userDetails.email) : null;
   const assignTarget = assignModal.id ? stateRef.current.invoices.find((x) => x.id === assignModal.id) : null;
+  const convertTarget = convertModal.id ? stateRef.current.invoices.find((x) => x.id === convertModal.id) : null;
   // An admin-set temporary password gates the app until the user picks their own.
   // Google accounts have no password to change, so they are never held here.
   const mustChangePassword = !!currentUser && currentUser.role !== 'admin' &&
@@ -1045,6 +1101,13 @@ export default function MainApp() {
         open={createUserOpen}
         onClose={() => setCreateUserOpen(false)}
         onCreated={createUserProfile}
+      />
+
+      <ConvertModal
+        open={convertModal.open && !!convertTarget}
+        proforma={convertTarget}
+        onClose={() => setConvertModal({ open: false, id: null })}
+        onConfirm={confirmConvertProforma}
       />
 
       <AssignModal

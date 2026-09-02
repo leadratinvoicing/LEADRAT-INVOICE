@@ -10,6 +10,9 @@ import {
   dateToInput, fmtMoneyForRegion, itemTaxBreakdown, MONEY_EPS, nextDocNumber, proformaState,
   regionOf, round2
 } from '../utils';
+import {
+  findDuplicateNumber, matchesSeriesFormat, seriesFormatHint, suggestDocNumber
+} from '../numbering';
 
 function blankItem() {
   const today = new Date().toISOString().slice(0, 10);
@@ -65,6 +68,9 @@ export default function InvoiceModal({
   const [country, setCountry] = useState('india');
   const [branch, setBranch] = useState('pune');
   const [invoiceNo, setInvoiceNo] = useState('');
+  // What the form offered. Comparing against it tells us whether the number
+  // was typed deliberately or simply left as the auto-fill.
+  const [suggestedNo, setSuggestedNo] = useState('');
   const [invoiceDate, setInvoiceDate] = useState('');
   const [clientId, setClientId] = useState('');
   const [clientName, setClientName] = useState('');
@@ -121,6 +127,7 @@ export default function InvoiceModal({
       setBranch(b);
       setCountry(b === 'dubai' ? 'dubai' : 'india');
       setInvoiceNo(d.invoiceNo || '');
+      setSuggestedNo(d.invoiceNo || '');
       setInvoiceDate(dateToInput(d.invoiceDate));
       setClientId(d.clientId || '');
       setClientName(d.clientName || '');
@@ -190,7 +197,9 @@ export default function InvoiceModal({
   useEffect(() => {
     if (!open || isEditing) return;
     // Prefix, padding and suffix all come from Settings → Numbering & Format.
-    setInvoiceNo(nextDocNumber(stateRef.current.numbering, stateRef.current.invoices, docType, branch));
+    const next = suggestDocNumber(stateRef.current.numbering, stateRef.current.invoices, docType, branch);
+    setInvoiceNo(next);
+    setSuggestedNo(next);
   }, [open, isEditing, docType, branch, stateRef]);
 
   // Keep the in-place editor on screen when it expands under a row near the fold.
@@ -284,6 +293,22 @@ export default function InvoiceModal({
   const proformaPendingAfter = convertState ? Math.max(0, round2(convertState.pending - receivedVal)) : 0;
   const overInvoicing = !!convertState && totalVal > convertState.unbilled + MONEY_EPS;
   const money = (n) => fmtMoneyForRegion(n, regionOf(branch));
+
+  /* ---------- Invoice number ----------
+     The number may always be typed by hand. The suggestion is simply the next
+     unused one in the series; anything already taken is refused rather than
+     quietly renumbered, so what is typed is what gets saved. */
+  const trimmedNo = invoiceNo.trim();
+  const numberEdited = trimmedNo !== suggestedNo;
+  const numberClash = findDuplicateNumber(invoices, trimmedNo, editingDoc ? editingDoc.id : null);
+  const numberOddFormat = !!trimmedNo && !numberClash &&
+    !matchesSeriesFormat(stateRef.current.numbering, trimmedNo, docType, branch);
+  function useSuggestedNumber() {
+    const next = suggestDocNumber(stateRef.current.numbering, invoices, docType, branch);
+    setInvoiceNo(next);
+    setSuggestedNo(next);
+    setBadField(null);
+  }
 
   const updateItem = (idx, field, value) =>
     setItems((list) => list.map((it, i) => {
@@ -390,6 +415,11 @@ export default function InvoiceModal({
     }
 
     if (!invoiceNo.trim()) return fail('frmInvoiceNo', 'Invoice number is required');
+    if (numberClash) {
+      return fail('frmInvoiceNo', 'Invoice number ' + trimmedNo + ' is already used by ' +
+        (numberClash.docType === 'proforma' ? 'proforma' : 'invoice') + ' for ' +
+        (numberClash.clientName || 'another client') + '. Please choose another.');
+    }
     if (!invoiceDate) return fail('frmInvoiceDate', 'Invoice date is required');
     if (!clientName.trim()) return fail('frmClientName', 'Client name is required');
     if (!clientAddr.trim()) return fail('frmClientAddr', 'Client address is required');
@@ -447,6 +477,9 @@ export default function InvoiceModal({
       docType,
       branch,
       invoiceNo: invoiceNo.trim(),
+      // Set when the number was typed rather than left as the auto-fill, so a
+      // clash is reported instead of silently bumped.
+      numberEdited,
       invoiceDate,
       clientId: clientId || null,
       clientName: clientName.trim(),
@@ -585,9 +618,35 @@ export default function InvoiceModal({
           </select>
         </div>
         <div className="form-group">
-          <label className="form-label">Invoice No *</label>
-          <input ref={bind('frmInvoiceNo')} type="text" className={cls('frmInvoiceNo')}
+          <label className="form-label">
+            Invoice No <span className="req">*</span>
+            {numberEdited && !numberClash && (
+              <button type="button" className="num-reset" onClick={useSuggestedNumber}
+                title="Replace with the next unused number in this series">↺ next available</button>
+            )}
+          </label>
+          <input ref={bind('frmInvoiceNo')} type="text"
+            className={cls('frmInvoiceNo') + ' convert-number' + (numberClash ? ' field-error' : '')}
             value={invoiceNo} onChange={(e) => { setInvoiceNo(e.target.value); setBadField(null); }} />
+          {numberClash ? (
+            <div className="convert-error">
+              Invoice number {trimmedNo} is already used by{' '}
+              {numberClash.docType === 'proforma' ? 'proforma' : 'invoice'}{' '}
+              <strong>{numberClash.invoiceNo}</strong> for{' '}
+              <strong>{numberClash.clientName || 'another client'}</strong>. Please choose another.
+            </div>
+          ) : numberOddFormat ? (
+            <div className="convert-warn">
+              ⚠ This does not follow the usual format{' '}
+              <code>{seriesFormatHint(stateRef.current.numbering, docType, branch)}</code>. Save anyway if intentional.
+            </div>
+          ) : (
+            <div className="password-hint">
+              {numberEdited
+                ? 'Custom number — saved exactly as typed. Future numbers will skip it.'
+                : 'Next unused number in this series. Type over it to set your own.'}
+            </div>
+          )}
         </div>
         <div className="form-group">
           <label className="form-label">Invoice Date *</label>

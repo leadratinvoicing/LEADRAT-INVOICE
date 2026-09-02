@@ -371,3 +371,15 @@ tr.client-docs-row>td{padding:0;background:#F9FAFB;border-bottom:2px solid var(-
 .tpl-tokens{background:#FAFBFC;border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:10px;color:var(--muted)}
 .tpl-token-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:4px 14px;margin-top:7px}
 .tpl-token-grid code{background:var(--brand-light);color:var(--brand-dark);border-radius:4px;padding:1px 5px;font-size:9.5px}
+
+/* ===== CONVERT PROFORMA → TAX INVOICE ===== */
+.convert-summary{background:var(--brand-light);border-radius:8px;padding:12px;margin-bottom:16px;font-size:10.8px;color:var(--brand-dark);line-height:1.55}
+.convert-number{font-family:'Consolas','Courier New',monospace;font-size:13px;letter-spacing:0.4px}
+.convert-error{color:var(--danger);font-size:10px;margin-top:6px;background:#FEF2F2;border:1px solid #FECACA;border-radius:6px;padding:7px 10px;line-height:1.5}
+.convert-warn{color:#92400E;font-size:10px;margin-top:6px;background:#FEF3C7;border:1px solid #FDE68A;border-radius:6px;padding:7px 10px;line-height:1.5}
+.convert-warn code,.convert-note code{background:rgba(255,255,255,0.65);border-radius:4px;padding:0 4px;font-size:9.5px}
+.convert-note{color:#1E40AF;font-size:10px;margin-top:6px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:6px;padding:7px 10px;line-height:1.5}
+.convert-foot-note{font-size:9.5px;color:var(--muted);border-top:1px solid var(--border);padding-top:10px;margin-top:4px}
+/* "next available" reset link inside the Invoice No label */
+.num-reset{margin-left:8px;font-size:9px;font-weight:600;color:var(--brand-dark);background:var(--brand-light);border:1px solid #BFE7E1;border-radius:10px;padding:1px 7px;vertical-align:middle}
+.num-reset:hover{background:#D5F0EB;color:#2E8B80}

@@ -48,6 +48,8 @@ export function AppProvider({ children }) {
   const [deptPermissions, setDeptPermissions] = useState(() => deepClone(DEFAULT_DEPT_PERMISSIONS));
   // Admin-defined roles. Each carries a permission set and a default data scope.
   const [roles, setRoles] = useState([]);
+  // Append-only trail of reconciliation events (proforma conversions today).
+  const [audit, setAudit] = useState([]);
   const [adminPass, setAdminPass] = useState(DEFAULT_ADMIN_PASS);
   const [currentUser, setCurrentUser] = useState(null);
   const [toasts, setToasts] = useState([]);
@@ -55,7 +57,7 @@ export function AppProvider({ children }) {
   // Mirror of the latest state so async handlers never read a stale closure —
   // this replaces the mutable `APP` object the original script relied on.
   const ref = useRef({});
-  ref.current = { users, invoices, clients, company, numbering, deptPermissions, roles, adminPass, currentUser };
+  ref.current = { users, invoices, clients, company, numbering, deptPermissions, roles, audit, adminPass, currentUser };
 
   // Set while a signup is mid-flight so the auth observer doesn't briefly log the
   // brand-new account in before we sign it back out.
@@ -105,6 +107,26 @@ export function AppProvider({ children }) {
     await Store.set('roles', list);
   }, []);
 
+  /**
+   * Append one event to the audit trail. Capped so the document can never
+   * grow unbounded — the newest entries are the ones anyone looks at.
+   */
+  const appendAudit = useCallback(async (entry) => {
+    const who = ref.current.currentUser || {};
+    const row = {
+      id: Math.random().toString(36).slice(2),
+      at: new Date().toISOString(),
+      by: who.name || who.email || "Admin",
+      byEmail: who.email || "",
+      ...entry
+    };
+    const next = [row, ...(ref.current.audit || [])].slice(0, 500);
+    setAudit(next);
+    ref.current.audit = next;
+    try { await Store.set("audit", next); } catch (e) { console.warn("[audit] save failed", e); }
+    return row;
+  }, []);
+
   const saveAdminPass = useCallback(async (p) => {
     setAdminPass(p);
     ref.current.adminPass = p;
@@ -140,6 +162,7 @@ export function AppProvider({ children }) {
         company: s.company || {},
         deptPermissions: s.deptPermissions || {},
         roles: s.roles || [],
+        audit: s.audit || [],
         adminPass: s.adminPass || DEFAULT_ADMIN_PASS
       }
     };
@@ -156,6 +179,7 @@ export function AppProvider({ children }) {
     const nextCompany = d.company && typeof d.company === 'object' ? d.company : ref.current.company;
     const nextPerms = d.deptPermissions && typeof d.deptPermissions === 'object' ? d.deptPermissions : ref.current.deptPermissions;
     const nextRoles = Array.isArray(d.roles) ? d.roles : ref.current.roles;
+    const nextAudit = Array.isArray(d.audit) ? d.audit : ref.current.audit;
     const nextAdminPass = d.adminPass || ref.current.adminPass;
 
     setInvoices(nextInvoices); ref.current.invoices = nextInvoices;
@@ -165,6 +189,7 @@ export function AppProvider({ children }) {
     setCompany(nextCompany); ref.current.company = nextCompany;
     setDeptPermissions(nextPerms); ref.current.deptPermissions = nextPerms;
     setRoles(nextRoles); ref.current.roles = nextRoles;
+    setAudit(nextAudit); ref.current.audit = nextAudit;
     setAdminPass(nextAdminPass); ref.current.adminPass = nextAdminPass;
 
     await Promise.all([
@@ -175,6 +200,7 @@ export function AppProvider({ children }) {
       Store.set('company', nextCompany),
       Store.set('deptPermissions', nextPerms),
       Store.set('roles', nextRoles),
+      Store.set('audit', nextAudit),
       Store.set('adminPass', nextAdminPass)
     ]);
 
@@ -265,7 +291,7 @@ export function AppProvider({ children }) {
 
   /* ---------------- BOOT ---------------- */
   const loadAll = useCallback(async () => {
-    const [u, ap, inv, cl, savedCompany, savedNumbering, savedDeptPerms, savedRoles] = await Promise.all([
+    const [u, ap, inv, cl, savedCompany, savedNumbering, savedDeptPerms, savedRoles, savedAudit] = await Promise.all([
       Store.get('users', []),
       Store.get('adminPass', DEFAULT_ADMIN_PASS),
       Store.get('invoices', []),
@@ -273,7 +299,8 @@ export function AppProvider({ children }) {
       Store.get('company', null),
       Store.get('numbering', null),
       Store.get('deptPermissions', null),
-      Store.get('roles', null)
+      Store.get('roles', null),
+      Store.get('audit', [])
     ]);
 
     setUsers(u || []); ref.current.users = u || [];
@@ -325,6 +352,9 @@ export function AppProvider({ children }) {
       try { await Store.set('roles', rolesToUse); } catch (e) { console.warn('[init] role seeding failed', e); }
     }
     setRoles(rolesToUse); ref.current.roles = rolesToUse;
+
+    const auditToUse = Array.isArray(savedAudit) ? savedAudit : [];
+    setAudit(auditToUse); ref.current.audit = auditToUse;
 
     console.log('[init] Loaded ' + (u || []).length + ' users, ' + (inv || []).length + ' invoices, ' + (cl || []).length + ' clients from storage.');
     return u || [];
@@ -400,9 +430,9 @@ export function AppProvider({ children }) {
 
   const value = {
     booted, storageHealthy, bannerDismissed, setBannerDismissed,
-    users, invoices, clients, company, numbering, deptPermissions, roles, adminPass, currentUser,
+    users, invoices, clients, company, numbering, deptPermissions, roles, audit, adminPass, currentUser,
     setUsers, setInvoices, setClients, setCurrentUser,
-    saveUsers, saveInvoices, saveClients, saveNumbering, saveDeptPermissions, saveRoles, saveAdminPass, saveCompany,
+    saveUsers, saveInvoices, saveClients, saveNumbering, saveDeptPermissions, saveRoles, appendAudit, saveAdminPass, saveCompany,
     reloadUsers, reloadInvoices, reloadClients, reloadRoles,
     buildBackupPayload, restoreBackup,
     enterApp, clearSession, signupInProgress,
