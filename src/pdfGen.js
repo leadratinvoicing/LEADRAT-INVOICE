@@ -1,7 +1,7 @@
 import { jsPDF } from 'jspdf';
 import { APTOS_NARROW_BOLD, APTOS_NARROW_REGULAR } from './fonts/aptosNarrow';
 import { DUBAI_LOGO_DATA_URI, LOGO_DATA_URI } from './logo';
-import { aedToWords, fmtDate, numberToWords } from './utils';
+import { aedToWords, documentItemBreakdown, fmtDate, numberToWords } from './utils';
 import {
   NOTE_ELECTRONIC, PROFORMA_NOTES, buildFilename, fmtMoneyAed, fmtMoneyDocx, titleCase
 } from './docxShared';
