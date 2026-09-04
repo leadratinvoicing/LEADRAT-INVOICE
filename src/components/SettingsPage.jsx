@@ -65,6 +65,7 @@ export default function SettingsPage() {
   const setBranchField = (branchKey, field, value) =>
     setDraft((d) => ({ ...d, [branchKey]: { ...d[branchKey], [field]: value } }));
 
+
   async function saveCompanyInfo() {
     if (!isAdmin) return showToast('Only admin can edit company information', 'error');
 

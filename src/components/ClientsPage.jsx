@@ -4,6 +4,7 @@ import {
   branchLabel, clientRegionMap, fmtDate, fmtMoneyForRegion, parseDateValue, regionOf,
   statusBadgeOf, visibleClientsFor, visibleDocsFor
 } from '../utils';
+import { clientGstins } from '../clientGst';
 import SortableTh, { sortRows, useSort } from './SortableTh';
 
 const COLUMNS = [
@@ -104,7 +105,7 @@ export default function ClientsPage({ initialRegion, onAdd, onEdit, onDelete, on
   if (s) {
     list = list.filter((c) =>
       (c.name || '').toLowerCase().includes(s) ||
-      (c.gstin || '').toLowerCase().includes(s) ||
+      clientGstins(c).some((r) => (r.gstin || '').toLowerCase().includes(s)) ||
       (c.city || '').toLowerCase().includes(s) ||
       (c.email || '').toLowerCase().includes(s) ||
       (c.phone || '').toLowerCase().includes(s)
@@ -207,7 +208,19 @@ export default function ClientsPage({ initialRegion, onAdd, onEdit, onDelete, on
                       <div style={{ fontSize: 9.1, color: 'var(--muted)', paddingLeft: 16 }}>{c.legalName}</div>
                     )}
                   </td>
-                  <td style={{ fontSize: 10, fontFamily: 'monospace' }}>{c.gstin || '-'}</td>
+                  <td style={{ fontSize: 10, fontFamily: 'monospace' }}>
+                    {clientGstins(c).filter((r) => r.gstin).length === 0 ? '-' : clientGstins(c)
+                      .filter((r) => r.gstin)
+                      .map((r) => (
+                        <div key={r.id} title={r.label + (r.address ? ' — ' + r.address : '')}
+                          style={{ whiteSpace: 'nowrap' }}>
+                          {r.gstin}
+                          {r.isDefault && clientGstins(c).length > 1 && (
+                            <span style={{ color: 'var(--brand-dark)', fontSize: 8.5 }}> ★</span>
+                          )}
+                        </div>
+                      ))}
+                  </td>
                   <td>{regionBadge(c.id)}</td>
                   <td style={{ fontSize: 10 }}>{c.city || '-'}</td>
                   <td style={{ fontSize: 10 }}>

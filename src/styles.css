@@ -383,3 +383,13 @@ tr.client-docs-row>td{padding:0;background:#F9FAFB;border-bottom:2px solid var(-
 /* "next available" reset link inside the Invoice No label */
 .num-reset{margin-left:8px;font-size:9px;font-weight:600;color:var(--brand-dark);background:var(--brand-light);border:1px solid #BFE7E1;border-radius:10px;padding:1px 7px;vertical-align:middle}
 .num-reset:hover{background:#D5F0EB;color:#2E8B80}
+
+/* ===== COMPANY GST REGISTRATIONS ===== */
+.gst-reg{border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:12px;background:#FAFBFC}
+.gst-reg.is-default{border-color:var(--brand);background:var(--brand-light)}
+.gst-reg-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px}
+.gst-reg-default{display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:600;color:var(--muted);cursor:pointer}
+.gst-reg.is-default .gst-reg-default{color:var(--brand-dark)}
+.gst-reg-default input{width:14px;height:14px;accent-color:var(--brand);cursor:pointer}
+.reg-preview{margin-top:5px;font-size:9.5px;color:var(--brand-dark);background:var(--brand-light);border-radius:6px;padding:6px 9px;white-space:pre-wrap;line-height:1.5}
+.gst-count{margin-left:8px;font-size:9px;font-weight:600;color:var(--brand-dark);background:var(--brand-light);border-radius:10px;padding:1px 7px;vertical-align:middle}

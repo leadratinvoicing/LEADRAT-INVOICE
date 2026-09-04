@@ -16,6 +16,7 @@ import {
   sameEmail, seriesConfig, seriesKeyFor, uid, visibleDocsFor
 } from './utils';
 import { advanceCounter, findDuplicateNumber, suggestDocNumber, syncCounters } from './numbering';
+import { hasMultipleClientGstins } from './clientGst';
 
 import Dashboard from './components/Dashboard';
 import InvoiceListPage from './components/InvoiceListPage';
@@ -313,9 +314,15 @@ export default function MainApp() {
         // never allowed to wipe a detail already on record.
         const patch = {};
         if (d.clientName.trim() && d.clientName.trim() !== (found.name || '')) patch.name = d.clientName.trim();
-        if (d.clientAddress && d.clientAddress !== (found.address || '')) patch.address = d.clientAddress;
-        if (d.clientGstin && d.clientGstin !== (found.gstin || '')) patch.gstin = d.clientGstin;
         if (d.clientLegalName && d.clientLegalName !== (found.legalName || '')) patch.legalName = d.clientLegalName;
+        // A client holding several GSTINs keeps them exactly as recorded: this
+        // invoice merely bills one of them, so writing its GSTIN and address
+        // back would silently overwrite the client's default registration.
+        // Those clients are edited on the Clients page instead.
+        if (!hasMultipleClientGstins(found)) {
+          if (d.clientAddress && d.clientAddress !== (found.address || '')) patch.address = d.clientAddress;
+          if (d.clientGstin && d.clientGstin !== (found.gstin || '')) patch.gstin = d.clientGstin;
+        }
         if (Object.keys(patch).length) {
           patch.updatedAt = new Date().toISOString();
           clientList = clientList.map((c) => (c.id === found.id ? { ...c, ...patch } : c));

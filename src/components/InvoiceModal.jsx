@@ -13,6 +13,9 @@ import {
 import {
   findDuplicateNumber, matchesSeriesFormat, seriesFormatHint, suggestDocNumber
 } from '../numbering';
+import {
+  clientGstinById, clientGstins, defaultClientGstin, hasMultipleClientGstins
+} from '../clientGst';
 
 function blankItem() {
   const today = new Date().toISOString().slice(0, 10);
@@ -73,6 +76,8 @@ export default function InvoiceModal({
   const [suggestedNo, setSuggestedNo] = useState('');
   const [invoiceDate, setInvoiceDate] = useState('');
   const [clientId, setClientId] = useState('');
+  // Which of the client's GSTINs this document is raised against.
+  const [clientGstId, setClientGstId] = useState('');
   const [clientName, setClientName] = useState('');
   const [clientAddr, setClientAddr] = useState('');
   const [gstApplicable, setGstApplicable] = useState('yes');
@@ -130,6 +135,7 @@ export default function InvoiceModal({
       setSuggestedNo(d.invoiceNo || '');
       setInvoiceDate(dateToInput(d.invoiceDate));
       setClientId(d.clientId || '');
+      setClientGstId(d.clientGstRegistrationId || '');
       setClientName(d.clientName || '');
       setClientAddr(d.clientAddress || '');
       setGstApplicable(d.gstApplicable || 'yes');
@@ -180,6 +186,7 @@ export default function InvoiceModal({
       setBranch('pune');
       setInvoiceDate(today);
       setClientId(''); setClientName(''); setClientAddr('');
+      setClientGstId('');
       setGstApplicable('yes'); setClientGstin(''); setClientLegalName('');
       setHsn('997331');
       setItems([blankItem()]);
@@ -332,12 +339,32 @@ export default function InvoiceModal({
   );
 
   /** Copy a saved client's details into the Bill To fields. */
+  /* ---------- Client GST registration ----------
+     A client billed in more than one state holds several GSTINs, each with
+     its own address. Picking one rewrites the Bill To block beneath it. */
+  const selectedClient = clients.find((c) => c.id === clientId) || null;
+  const clientGstList = selectedClient ? clientGstins(selectedClient) : [];
+  const mustPickClientGst = !isDubai && !!selectedClient && hasMultipleClientGstins(selectedClient);
+
+  /** Apply one registration to the Bill To fields. */
+  function applyClientGst(reg) {
+    if (!reg) return;
+    setClientGstId(reg.id);
+    setClientGstin(reg.gstin || '');
+    if (reg.address) setClientAddr(reg.address);
+    if (reg.gstin) setGstApplicable('yes');
+    setBadField(null);
+  }
+
   function fillFromClient(c) {
     setClientName(c.name);
-    setClientAddr(c.address || '');
-    setClientGstin(c.gstin || '');
     setClientLegalName(distinctLegalName(c.legalName, c.name));
-    if (c.gstin) setGstApplicable('yes');
+    // Start on the client’s default GSTIN; the picker below can change it.
+    const reg = defaultClientGstin(c);
+    setClientGstId(reg ? reg.id : '');
+    setClientAddr((reg && reg.address) || c.address || '');
+    setClientGstin((reg && reg.gstin) || c.gstin || '');
+    if ((reg && reg.gstin) || c.gstin) setGstApplicable('yes');
   }
 
   function onClientSelect(id) {
@@ -423,6 +450,9 @@ export default function InvoiceModal({
     if (!invoiceDate) return fail('frmInvoiceDate', 'Invoice date is required');
     if (!clientName.trim()) return fail('frmClientName', 'Client name is required');
     if (!clientAddr.trim()) return fail('frmClientAddr', 'Client address is required');
+    if (mustPickClientGst && !clientGstList.some((r) => r.id === clientGstId)) {
+      return fail('frmClientGstSel', 'Choose which of this client’s GSTINs to bill');
+    }
     if (gstApplicable !== 'no') {
       if (!clientGstin.trim()) return fail('frmClientGstin', 'Client ' + taxIdLabel + ' is required');
       if (clientGstin.trim().length !== 15) {
@@ -482,6 +512,10 @@ export default function InvoiceModal({
       numberEdited,
       invoiceDate,
       clientId: clientId || null,
+      // Which registration was billed. The GSTIN and address themselves are
+      // already stored above, so the document stays correct even if the
+      // client record is edited later.
+      clientGstRegistrationId: clientGstId || null,
       clientName: clientName.trim(),
       clientAddress: clientAddr.trim(),
       gstApplicable: gstApplicable === 'no' ? 'no' : 'yes',
@@ -668,6 +702,27 @@ export default function InvoiceModal({
           emptyText="No matching client — type the details below to add a new one."
         />
       </div>
+      {mustPickClientGst && (
+        <div className="form-group">
+          <label className="form-label">
+            Bill To GSTIN <span className="req">*</span>
+            <span className="gst-count">{clientGstList.length} registrations</span>
+          </label>
+          <select ref={bind('frmClientGstSel')} className={cls('frmClientGstSel')} value={clientGstId}
+            onChange={(e) => applyClientGst(clientGstinById(selectedClient, e.target.value))}>
+            <option value="">-- Select which GSTIN to bill --</option>
+            {clientGstList.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.label}{r.gstin ? ' · ' + r.gstin : ''}{r.isDefault ? ' (default)' : ''}
+              </option>
+            ))}
+          </select>
+          <div className="password-hint">
+            {clientName || 'This client'} is registered under {clientGstList.length} GSTINs —
+            picking one fills the GSTIN and address below.
+          </div>
+        </div>
+      )}
       <div className="form-grid">
         <div className="form-group form-grid-full">
           <label className="form-label">Client Name <span className="req">*</span></label>
