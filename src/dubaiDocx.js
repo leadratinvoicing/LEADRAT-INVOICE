@@ -67,7 +67,14 @@ export async function generateDubaiDocx(d, isProforma, co, bank) {
   const trnAvailable = d.gstApplicable !== 'no';
   const trnValue = trnAvailable ? (d.clientGstin || 'NOT AVAILABLE') : 'NOT AVAILABLE';
   const payDateLabel = isProforma ? 'Payment Due Date:' : 'Payment Date:';
-  const payDateVal = fmtDate(d.dueDate || d.invoiceDate || (d.items && d.items[0] && d.items[0].paymentDate));
+  // A proforma states when payment is DUE; a tax invoice states when it was
+  // MADE. The two read from different fields — resolving both through the same
+  // dueDate-first chain made a tax invoice fall through to the invoice date and
+  // ignore the payment date entered on the line.
+  const firstItemPayDate = d.items && d.items[0] && d.items[0].paymentDate;
+  const payDateVal = fmtDate(isProforma
+    ? (d.dueDate || d.invoiceDate)
+    : (d.paymentDate || firstItemPayDate || d.invoiceDate));
 
   /* ---------- TABLE 1: Bill From + logo + invoice no/date + Bill To ---------- */
   const billFromChildren = [

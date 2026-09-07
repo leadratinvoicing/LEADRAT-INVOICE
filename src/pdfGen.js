@@ -491,6 +491,18 @@ function buildIndiaPdf(doc, d, co, bank) {
 /* ============================================================
    DUBAI — AED, TRN/LICENSE NO, flat VAT @ 5%
    ============================================================ */
+/**
+ * A proforma states when payment is DUE; a tax invoice states when it was MADE.
+ * Resolving both through one dueDate-first chain made a tax invoice fall through
+ * to the invoice date, ignoring the payment date entered on the line.
+ */
+function dubaiPayDate(d, isProforma) {
+  const firstItemPayDate = d.items && d.items[0] && d.items[0].paymentDate;
+  return isProforma
+    ? (d.dueDate || d.invoiceDate)
+    : (d.paymentDate || firstItemPayDate || d.invoiceDate);
+}
+
 function buildDubaiPdf(doc, d, co, bank) {
   const r = createRenderer(doc);
   const isProforma = d.docType === 'proforma';
@@ -542,7 +554,7 @@ function buildDubaiPdf(doc, d, co, bank) {
   r.row([
     billTo,
     cellOf([line(isProforma ? 'Payment Due Date:' : 'Payment Date:', { bold: true })], { valign: 'middle' }),
-    cellOf([line(fmtDate(d.dueDate || d.invoiceDate || (d.items && d.items[0] && d.items[0].paymentDate)), { raw: true })], { valign: 'middle' })
+    cellOf([line(fmtDate(dubaiPayDate(d, isProforma)), { raw: true })], { valign: 'middle' })
   ], COLS);
   r.gap();
 
