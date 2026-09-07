@@ -52,6 +52,7 @@ export default function MainApp() {
   const {
     currentUser, users, stateRef,
     saveInvoices, saveClients, saveUsers, saveNumbering,
+    updateInvoices, updateClients, updateUsers,
     reloadInvoices, reloadClients, reloadUsers, reloadRoles,
     buildBackupPayload, restoreBackup,
     appendAudit, clearSession, userCanAccess, refreshSessionUser, showToast
@@ -164,7 +165,10 @@ export default function MainApp() {
       : 'Delete this document? This cannot be undone.';
     if (!confirm(msg)) return;
 
-    let next = stateRef.current.invoices.filter((d) => d.id !== id);
+    // Re-read before removing: this write replaces the whole collection, so a
+    // stale copy would delete anything colleagues added since page load.
+    const current = await reloadInvoices();
+    let next = current.filter((d) => d.id !== id);
     // Deleting a tax invoice reopens that slice of its proforma, so the stamps
     // pointing at it have to go too.
     if (doomed && doomed.sourceProformaId) {
@@ -587,10 +591,9 @@ export default function MainApp() {
   async function saveClientRecord(data) {
     const editing = clientModal.editing;
     if (!can('clients', editing ? 'edit' : 'create')) return deny(editing ? 'edit clients' : 'add clients');
-    const list = editing
-      ? stateRef.current.clients.map((c) => (c.id === editing.id ? { ...c, ...data } : c))
-      : [...stateRef.current.clients, { id: uid(), ...data, createdAt: new Date().toISOString() }];
-    await saveClients(list);
+    await updateClients((latest) => (editing
+      ? latest.map((c) => (c.id === editing.id ? { ...c, ...data } : c))
+      : [...latest, { id: uid(), ...data, createdAt: new Date().toISOString() }]));
     setClientModal({ open: false, editing: null });
     showToast('Client saved');
   }
@@ -598,7 +601,7 @@ export default function MainApp() {
   async function deleteClient(id) {
     if (!can('clients', 'delete')) return deny('delete clients');
     if (!confirm('Delete this client? Invoices for this client will not be deleted but will lose link.')) return;
-    await saveClients(stateRef.current.clients.filter((c) => c.id !== id));
+    await updateClients((latest) => latest.filter((c) => c.id !== id));
     showToast('Client deleted');
   }
 
@@ -876,7 +879,7 @@ export default function MainApp() {
 
   /* ---------------- USERS ---------------- */
   async function saveUserEdit(updated) {
-    await saveUsers(stateRef.current.users.map((u) => (u.email === updated.email ? updated : u)));
+    await updateUsers((latest) => latest.map((u) => (u.email === updated.email ? updated : u)));
     setUserModal({ open: false, email: null });
     // The edited user may be the one signed in — re-resolve their session so a
     // permission or scope change takes effect without a sign-out.
@@ -917,7 +920,7 @@ export default function MainApp() {
 
   async function deleteUser(email) {
     if (!confirm('Delete this user account? This cannot be undone.')) return;
-    await saveUsers(stateRef.current.users.filter((u) => u.email !== email));
+    await updateUsers((latest) => latest.filter((u) => u.email !== email));
     showToast('User deleted · their Firebase sign-in must be removed from the Firebase console separately');
   }
 

@@ -8,7 +8,7 @@ import PasswordInput from './PasswordInput';
 export default function SettingsPage() {
   const {
     currentUser, company, adminPass, numbering, invoices,
-    saveUsers, saveAdminPass, saveCompany, saveNumbering, enterApp, showToast, stateRef
+    saveUsers, updateUsers, saveAdminPass, saveCompany, saveNumbering, enterApp, showToast, stateRef
   } = useApp();
 
   const [tab, setTab] = useState('profile');
@@ -32,7 +32,7 @@ export default function SettingsPage() {
     if (!n) return showToast('Name required', 'error');
     const cu = { ...stateRef.current.currentUser, name: n };
     if (cu.role !== 'admin') {
-      await saveUsers(stateRef.current.users.map((u) => (u.email === cu.email ? { ...u, name: n } : u)));
+      await updateUsers((latest) => latest.map((u) => (u.email === cu.email ? { ...u, name: n } : u)));
     }
     enterApp(cu);
     showToast('Profile updated');

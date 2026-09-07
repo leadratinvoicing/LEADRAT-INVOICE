@@ -21,7 +21,7 @@ function blankPermissions() {
  * change here reaches everyone holding that role.
  */
 export default function RolesPanel({ onClose }) {
-  const { roles, saveRoles, users, saveUsers, showToast, refreshSessionUser } = useApp();
+  const { roles, saveRoles, users, updateUsers, showToast, refreshSessionUser } = useApp();
 
   const [activeId, setActiveId] = useState(roles[0] ? roles[0].id : null);
   const [draft, setDraft] = useState(null);
@@ -91,7 +91,7 @@ export default function RolesPanel({ onClose }) {
     // deleting a role never silently widens or removes someone's access.
     if (assigned.length) {
       const frozen = new Set(assigned.map((u) => u.email));
-      await saveUsers(users.map((u) => (frozen.has(u.email)
+      await updateUsers((latest) => latest.map((u) => (frozen.has(u.email)
         ? { ...u, roleId: null, permissionsSource: 'custom', permissions: deepClone(active.permissions), dataScope: active.dataScope, updatedAt: new Date().toISOString() }
         : u)));
     }

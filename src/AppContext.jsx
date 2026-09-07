@@ -71,23 +71,55 @@ export function AppProvider({ children }) {
   }, []);
 
   /* ---------------- PERSISTENCE HELPERS ---------------- */
-  const saveUsers = useCallback(async (list) => {
-    setUsers(list);
-    ref.current.users = list;
-    await Store.set('users', list);
-  }, []);
+  /**
+   * Write a collection and keep the screen honest about whether it landed.
+   *
+   * The list is shown immediately so the app stays responsive, but if the write
+   * is rejected — offline, permission denied, unauthorised domain — the previous
+   * data is put back and the error is raised. Showing a saved-looking screen for
+   * data that only reached this browser is how work quietly goes missing.
+   */
+  const persist = useCallback(async (key, list, setter) => {
+    const previous = ref.current[key];
+    setter(list);
+    ref.current[key] = list;
+    try {
+      await Store.set(key, list);
+    } catch (e) {
+      setter(previous);
+      ref.current[key] = previous;
+      showToast('Could not save to the shared database — your change was NOT stored. '
+        + (e && e.message ? e.message : e), 'error');
+      throw e;
+    }
+  }, [showToast]);
 
-  const saveInvoices = useCallback(async (list) => {
-    setInvoices(list);
-    ref.current.invoices = list;
-    await Store.set('invoices', list);
-  }, []);
+  const saveUsers = useCallback((list) => persist('users', list, setUsers), [persist]);
+  const saveInvoices = useCallback((list) => persist('invoices', list, setInvoices), [persist]);
+  const saveClients = useCallback((list) => persist('clients', list, setClients), [persist]);
 
-  const saveClients = useCallback(async (list) => {
-    setClients(list);
-    ref.current.clients = list;
-    await Store.set('clients', list);
-  }, []);
+  /* ---------------- READ-MODIFY-WRITE ----------------
+     Each collection lives in ONE document holding the whole array, so a save
+     replaces everything. Building that array from a copy loaded at page load
+     therefore deletes whatever anyone else added since. These helpers re-read
+     the current data immediately before applying the change, so a delete or an
+     edit can never take someone else's work with it. */
+  const mutate = useCallback(async (key, setter, apply) => {
+    let latest = ref.current[key];
+    try {
+      const fresh = await Store.get(key, [], { bypassCache: true });
+      if (Array.isArray(fresh)) latest = fresh;
+    } catch (e) {
+      // Could not confirm the latest state — refuse rather than overwrite blind.
+      showToast('Cannot reach the shared database — change not saved, please retry.', 'error');
+      throw e;
+    }
+    return persist(key, apply(latest), setter);
+  }, [persist, showToast]);
+
+  const updateInvoices = useCallback((apply) => mutate('invoices', setInvoices, apply), [mutate]);
+  const updateClients = useCallback((apply) => mutate('clients', setClients, apply), [mutate]);
+  const updateUsers = useCallback((apply) => mutate('users', setUsers, apply), [mutate]);
 
   const saveNumbering = useCallback(async (n) => {
     setNumbering(n);
@@ -428,11 +460,34 @@ export function AppProvider({ children }) {
     return () => { cancelled = true; unsub(); };
   }, [loadAll, enterApp, clearSession]);
 
+  /* ---------------- LIVE UPDATES ----------------
+     Without this a tab only ever knows the data it loaded at start-up, so it
+     shows stale lists and — because every save rewrites a whole collection —
+     risks overwriting whatever colleagues have added since. Subscribing keeps
+     every open tab current within a second of anyone else's change. */
+  useEffect(() => {
+    if (!booted) return undefined;
+    const feeds = [
+      ['invoices', setInvoices],
+      ['clients', setClients],
+      ['users', setUsers],
+      ['roles', setRoles],
+      ['numbering', setNumbering],
+      ['company', setCompany]
+    ];
+    const stops = feeds.map(([key, setter]) => Store.subscribe(key, (value) => {
+      setter(value);
+      ref.current[key] = value;
+    }));
+    return () => { for (const stop of stops) { try { stop(); } catch { /* already gone */ } } };
+  }, [booted]);
+
   const value = {
     booted, storageHealthy, bannerDismissed, setBannerDismissed,
     users, invoices, clients, company, numbering, deptPermissions, roles, audit, adminPass, currentUser,
     setUsers, setInvoices, setClients, setCurrentUser,
     saveUsers, saveInvoices, saveClients, saveNumbering, saveDeptPermissions, saveRoles, appendAudit, saveAdminPass, saveCompany,
+    updateInvoices, updateClients, updateUsers,
     reloadUsers, reloadInvoices, reloadClients, reloadRoles,
     buildBackupPayload, restoreBackup,
     enterApp, clearSession, signupInProgress,

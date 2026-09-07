@@ -1,4 +1,4 @@
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, onSnapshot, setDoc } from 'firebase/firestore';
 import { db } from './firebase';
 
 /* ============================================================
@@ -76,9 +76,40 @@ export async function set(key, value) {
   }
 }
 
+/**
+ * Watch one key and call back whenever it changes — including changes made by
+ * other people in other browsers. Without this a tab only ever sees the data it
+ * loaded at start-up, and would happily overwrite everything saved since.
+ *
+ * Returns an unsubscribe function. Errors are reported once and the listener
+ * stops; the app keeps working from its last known data.
+ */
+export function subscribe(key, onValue, onError) {
+  try {
+    return onSnapshot(
+      doc(db, COLLECTION, key),
+      (snap) => {
+        if (!snap.exists()) return;
+        const value = snap.data().value;
+        if (value === undefined || value === null) return;
+        cache[key] = value;
+        lsSet(key, value);
+        onValue(value);
+      },
+      (e) => {
+        console.warn('[Store] live updates unavailable for "' + key + '":', e && e.message ? e.message : e);
+        if (onError) onError(e);
+      }
+    );
+  } catch (e) {
+    console.warn('[Store] could not subscribe to "' + key + '":', e && e.message ? e.message : e);
+    return () => {};
+  }
+}
+
 export function clearCache() {
   cache = {};
 }
 
-const Store = { get, set, clearCache };
+const Store = { get, set, subscribe, clearCache };
 export default Store;

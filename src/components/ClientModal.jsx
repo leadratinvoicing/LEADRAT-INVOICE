@@ -97,6 +97,9 @@ export default function ClientModal({ open, editingClient, onClose, onSave }) {
         gstin: primary.gstin,
         gstRegistrations: cleaned
       });
+    } catch (e) {
+      // Context shows the error and restores the previous list.
+      console.error('[save] client not stored', e);
     } finally {
       setSaving(false);
     }

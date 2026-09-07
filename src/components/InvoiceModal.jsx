@@ -562,6 +562,11 @@ export default function InvoiceModal({
     setSaving(true);
     try {
       await onSave(doc, downloadAs, (field) => setBadField(field));
+    } catch (e) {
+      // The context already explains the failure and rolls the list back. Catch
+      // it here so the form stays open with the work intact rather than looking
+      // saved while the data never left this browser.
+      console.error('[save] invoice not stored', e);
     } finally {
       setSaving(false);
     }
