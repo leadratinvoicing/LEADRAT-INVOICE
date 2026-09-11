@@ -53,7 +53,7 @@ export default function MainApp() {
     currentUser, users, stateRef,
     saveInvoices, saveClients, saveUsers, saveNumbering,
     updateInvoices, updateClients, updateUsers,
-    reloadInvoices, reloadClients, reloadUsers, reloadRoles,
+    reloadInvoices, reloadClients, reloadUsers, reloadRoles, fetchFreshInvoices,
     buildBackupPayload, restoreBackup,
     appendAudit, clearSession, userCanAccess, refreshSessionUser, showToast
   } = useApp();
@@ -262,8 +262,19 @@ export default function MainApp() {
       return deny(isNew ? 'create documents' : 'edit this document');
     }
     if (downloadAs && !can(mod, 'generatePdf')) return deny('generate documents');
-    // Reload so we catch invoices created since this tab loaded.
-    const latest = await reloadInvoices();
+    // Document numbers must be unique, so this read has to be confirmed by the
+    // server. reloadInvoices() quietly falls back to this browser’s local copy
+    // when Firestore is unreachable, and a stale copy reports a number as free —
+    // which is how the same number ends up issued twice.
+    let latest;
+    try {
+      latest = await fetchFreshInvoices();
+    } catch (e) {
+      console.error('[save] could not confirm existing numbers', e);
+      showToast('Cannot reach the database to check the invoice number. '
+        + 'Nothing was saved — check your connection and try again.', 'error');
+      return;
+    }
 
     const d = { ...doc };
     if (isNew) d.id = uid();
@@ -289,7 +300,7 @@ export default function MainApp() {
     }
     d.updatedBy = me.name || me.email || '';
     // === DUPLICATE PROTECTION ===
-    const clash = latest.find((x) => x.invoiceNo === d.invoiceNo && x.id !== d.id);
+    const clash = findDuplicateNumber(latest, d.invoiceNo, d.id);
     if (clash) {
       // A number typed on purpose — an edit, or one picked in the convert
       // dialog — is reported, never quietly changed underneath the user.
@@ -408,6 +419,33 @@ export default function MainApp() {
       if (JSON.stringify(synced) !== JSON.stringify(n)) await saveNumbering(synced);
     }
     await saveInvoices(nextInvoices);
+
+    /* ---------- CONFIRM THE NUMBER IS STILL OURS ----------
+       Checking then writing is not atomic: two people saving in the same
+       moment can both see a number as free and both take it. Re-read after
+       the write and, if this document is no longer the only holder, move it
+       to the next free number and say so. The alternative is two documents
+       carrying one number, which is far harder to unpick later. */
+    if (isNew) {
+      try {
+        const confirmed = await fetchFreshInvoices();
+        const holders = confirmed.filter((x) =>
+          String(x.invoiceNo || '').trim().toLowerCase() === String(d.invoiceNo || '').trim().toLowerCase());
+        if (holders.length > 1) {
+          const taken = d.invoiceNo;
+          const free = suggestDocNumber(stateRef.current.numbering, confirmed, d.docType, d.branch);
+          const healed = confirmed.map((x) => (x.id === d.id ? { ...x, invoiceNo: free } : x));
+          await saveInvoices(healed);
+          await saveNumbering(syncCounters(advanceCounter(stateRef.current.numbering, free, d.docType, d.branch), healed));
+          d.invoiceNo = free;
+          showToast(taken + ' was taken by someone else at the same moment — '
+            + 'this document is now ' + free + '.', 'warn');
+        }
+      } catch (e) {
+        // Could not re-read; the write itself already succeeded.
+        console.warn('[save] could not confirm number uniqueness', e);
+      }
+    }
     if (auditEntry) await appendAudit(auditEntry);
 
     setInvoiceModal(CLOSED_INVOICE_MODAL);

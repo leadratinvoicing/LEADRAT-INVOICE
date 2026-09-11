@@ -84,6 +84,25 @@ export async function set(key, value) {
  * Returns an unsubscribe function. Errors are reported once and the listener
  * stops; the app keeps working from its last known data.
  */
+/**
+ * A read that is either confirmed by the server or fails loudly.
+ *
+ * get() falls back to this browser's localStorage when Firestore is
+ * unreachable, which is right for displaying data but wrong for deciding
+ * whether a document number is free: a stale local copy would report a number
+ * as unused and mint a duplicate. Anything that has to be CORRECT rather than
+ * merely available must use this and handle the throw.
+ */
+export async function getFresh(key, defaultVal) {
+  const snap = await getDoc(doc(db, COLLECTION, key));
+  if (!snap.exists()) return defaultVal;
+  const value = snap.data().value;
+  if (value === undefined || value === null) return defaultVal;
+  cache[key] = value;
+  lsSet(key, value);
+  return value;
+}
+
 export function subscribe(key, onValue, onError) {
   try {
     return onSnapshot(
@@ -111,5 +130,5 @@ export function clearCache() {
   cache = {};
 }
 
-const Store = { get, set, subscribe, clearCache };
+const Store = { get, getFresh, set, subscribe, clearCache };
 export default Store;

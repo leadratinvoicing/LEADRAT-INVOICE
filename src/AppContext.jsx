@@ -248,6 +248,19 @@ export function AppProvider({ children }) {
     return ref.current.users;
   }, []);
 
+  /**
+   * Invoices straight from the server, or an exception. Used where a stale
+   * answer would be worse than no answer — deciding whether a document number
+   * is already taken, above all.
+   */
+  const fetchFreshInvoices = useCallback(async () => {
+    const latest = await Store.getFresh('invoices', []);
+    const list = Array.isArray(latest) ? latest : [];
+    setInvoices(list);
+    ref.current.invoices = list;
+    return list;
+  }, []);
+
   const reloadInvoices = useCallback(async () => {
     try {
       const latest = await Store.get('invoices', [], { bypassCache: true });
@@ -488,7 +501,7 @@ export function AppProvider({ children }) {
     setUsers, setInvoices, setClients, setCurrentUser,
     saveUsers, saveInvoices, saveClients, saveNumbering, saveDeptPermissions, saveRoles, appendAudit, saveAdminPass, saveCompany,
     updateInvoices, updateClients, updateUsers,
-    reloadUsers, reloadInvoices, reloadClients, reloadRoles,
+    reloadUsers, reloadInvoices, reloadClients, reloadRoles, fetchFreshInvoices,
     buildBackupPayload, restoreBackup,
     enterApp, clearSession, signupInProgress,
     getDefaultPermissionsForDept, userCanAccess, refreshSessionUser,
