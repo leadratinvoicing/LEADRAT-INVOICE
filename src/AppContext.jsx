@@ -3,7 +3,8 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from './firebase';
 import Store from './store';
 import {
-  DEFAULT_ADMIN_PASS, DEFAULT_COMPANY, DEFAULT_DEPT_PERMISSIONS, DEFAULT_NUMBERING
+  AUDIT_LIMIT, DEFAULT_ADMIN_PASS, DEFAULT_COMPANY, DEFAULT_DEPT_PERMISSIONS, DEFAULT_NUMBERING,
+  IDLE_RESYNC_MS
 } from './constants';
 import { buildSeedRoles, deepClone, resolveUserSession } from './utils';
 
@@ -16,6 +17,7 @@ export function useApp() {
 }
 
 const SESSION_KEY = 'leadrat:currentUser';
+const ACTIVITY_KEY = 'leadrat:lastActivity';
 
 function readSession() {
   try {
@@ -146,18 +148,33 @@ export function AppProvider({ children }) {
   const appendAudit = useCallback(async (entry) => {
     const who = ref.current.currentUser || {};
     const row = {
-      id: Math.random().toString(36).slice(2),
+      id: Math.random().toString(36).slice(2) + Date.now().toString(36),
       at: new Date().toISOString(),
-      by: who.name || who.email || "Admin",
-      byEmail: who.email || "",
+      by: who.name || who.email || 'Admin',
+      byEmail: who.email || '',
       ...entry
     };
-    const next = [row, ...(ref.current.audit || [])].slice(0, 500);
+    // The trail lives in one document, so appending from a stale copy would
+    // erase whatever colleagues logged meanwhile. Read the current list first.
+    let existing = ref.current.audit || [];
+    try {
+      const fresh = await Store.get('audit', [], { bypassCache: true });
+      if (Array.isArray(fresh)) existing = fresh;
+    } catch { /* keep what we have rather than lose the entry entirely */ }
+
+    const next = [row, ...existing].slice(0, AUDIT_LIMIT);
     setAudit(next);
     ref.current.audit = next;
-    try { await Store.set("audit", next); } catch (e) { console.warn("[audit] save failed", e); }
+    // A failed audit write must never block the action it was recording.
+    try { await Store.set('audit', next); } catch (e) { console.warn('[audit] save failed', e); }
     return row;
   }, []);
+
+  /** Fire-and-forget logging: never let the trail hold up or break the work. */
+  const logActivity = useCallback((action, details) => {
+    Promise.resolve(appendAudit({ action, details: details || {} }))
+      .catch((e) => console.warn('[audit] not recorded', e));
+  }, [appendAudit]);
 
   const saveAdminPass = useCallback(async (p) => {
     setAdminPass(p);
@@ -285,6 +302,33 @@ export function AppProvider({ children }) {
     return ref.current.roles;
   }, []);
 
+  /**
+   * Re-read every shared collection from the server. Used after a long idle
+   * gap and at sign-in, so a tab that has been sitting open — or one whose
+   * live listener was dropped by the browser while backgrounded — starts from
+   * the real data rather than whatever it happened to remember.
+   */
+  const resyncAll = useCallback(async () => {
+    const keys = [
+      ['invoices', setInvoices, []], ['clients', setClients, []], ['users', setUsers, []],
+      ['roles', setRoles, []], ['numbering', setNumbering, null], ['company', setCompany, null],
+      ['audit', setAudit, []]
+    ];
+    let ok = 0;
+    for (const [key, setter, fallback] of keys) {
+      try {
+        const value = await Store.get(key, fallback, { bypassCache: true });
+        if (value === null || value === undefined) continue;
+        setter(value);
+        ref.current[key] = value;
+        ok += 1;
+      } catch (e) {
+        console.warn('[resync] ' + key + ' failed', e);
+      }
+    }
+    return ok;
+  }, []);
+
   /* ---------------- SESSION ---------------- */
   /**
    * A stored profile becomes a session user only after its role is resolved:
@@ -296,6 +340,13 @@ export function AppProvider({ children }) {
     setCurrentUser(resolved);
     ref.current.currentUser = resolved;
     writeSession(resolved);
+    // A sign-in is both an audit event and the moment to pull fresh data.
+    const previous = ref.current.currentUser;
+    if (!previous || previous.email !== resolved.email) {
+      Promise.resolve(appendAudit({ action: 'login', details: { email: resolved.email || 'Admin', role: resolved.role } }))
+        .catch(() => {});
+      resyncIfStale('login').catch(() => {});
+    }
   }, []);
 
   const clearSession = useCallback(() => {
@@ -327,6 +378,7 @@ export function AppProvider({ children }) {
     if (u.role === 'admin') return true;
     if (page === 'dashboard') return true;
     if (page === 'users') return false;
+    if (page === 'audit') return false;
     const perms = u.permissions || {};
     const mod = perms[page];
     if (!mod) return false;
@@ -495,16 +547,74 @@ export function AppProvider({ children }) {
     return () => { for (const stop of stops) { try { stop(); } catch { /* already gone */ } } };
   }, [booted]);
 
+  /* ---------------- IDLE RESYNC ----------------
+     A tab left open overnight may have missed changes: browsers suspend
+     background sockets, and a dropped listener reconnects without replaying
+     what it missed. So the moment someone comes back after a long gap — and
+     again at sign-in — everything is re-read from the server before they act
+     on it. The timestamp lives in localStorage so it survives a reload and is
+     shared across this browser’s tabs. */
+  const resyncingRef = useRef(false);
+
+  const touchActivity = useCallback(() => {
+    try { localStorage.setItem(ACTIVITY_KEY, String(Date.now())); } catch { /* private mode */ }
+  }, []);
+
+  const resyncIfStale = useCallback(async (reason) => {
+    if (resyncingRef.current) return false;
+    let last = 0;
+    try { last = parseInt(localStorage.getItem(ACTIVITY_KEY), 10) || 0; } catch { last = 0; }
+    const gap = Date.now() - last;
+    if (last && gap < IDLE_RESYNC_MS && reason !== 'login') { touchActivity(); return false; }
+
+    resyncingRef.current = true;
+    try {
+      const n = await resyncAll();
+      if (reason !== 'login' && last) {
+        const hours = Math.round(gap / 3600000);
+        showToast('Away for ' + (hours >= 1 ? hours + 'h' : 'a while')
+          + ' — refreshed ' + n + ' data sets so you are working on the latest.', 'warn');
+      }
+      return true;
+    } finally {
+      resyncingRef.current = false;
+      touchActivity();
+    }
+  }, [resyncAll, showToast, touchActivity]);
+
+  useEffect(() => {
+    if (!booted || !currentUser) return undefined;
+    // Coming back to the tab is the strongest signal someone has returned.
+    const onVisible = () => { if (!document.hidden) resyncIfStale('return'); };
+    const onFocus = () => resyncIfStale('return');
+    const onActivity = () => {
+      // Cheap path: only the timestamp moves unless the gap is long.
+      resyncIfStale('activity');
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onFocus);
+    for (const ev of ['click', 'keydown']) window.addEventListener(ev, onActivity, { passive: true });
+    // Also check on a timer, for a tab left open and untouched.
+    const timer = setInterval(() => { if (!document.hidden) resyncIfStale('timer'); }, 5 * 60 * 1000);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onFocus);
+      for (const ev of ['click', 'keydown']) window.removeEventListener(ev, onActivity);
+      clearInterval(timer);
+    };
+  }, [booted, currentUser, resyncIfStale]);
+
   const value = {
     booted, storageHealthy, bannerDismissed, setBannerDismissed,
     users, invoices, clients, company, numbering, deptPermissions, roles, audit, adminPass, currentUser,
     setUsers, setInvoices, setClients, setCurrentUser,
-    saveUsers, saveInvoices, saveClients, saveNumbering, saveDeptPermissions, saveRoles, appendAudit, saveAdminPass, saveCompany,
+    saveUsers, saveInvoices, saveClients, saveNumbering, saveDeptPermissions, saveRoles, saveAdminPass, saveCompany,
     updateInvoices, updateClients, updateUsers,
     reloadUsers, reloadInvoices, reloadClients, reloadRoles, fetchFreshInvoices,
     buildBackupPayload, restoreBackup,
     enterApp, clearSession, signupInProgress,
     getDefaultPermissionsForDept, userCanAccess, refreshSessionUser,
+    logActivity, appendAudit, resyncAll, resyncIfStale, touchActivity,
     toasts, showToast,
     stateRef: ref
   };

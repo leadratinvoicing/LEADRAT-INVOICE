@@ -284,3 +284,54 @@ export const BRANCH_GST_STATE_CODE = {
 
 /** Sub-types billed against an earlier invoice — no licence count or validity of their own. */
 export const NO_LICENSE_SUBTYPES = ['Balance Pay'];
+
+/* ============================================================
+   AUDIT LOG
+   Every entry records WHO did WHAT and WHEN. The catalogue below drives the
+   filter dropdown and the wording shown in the log, so adding an action means
+   adding one line here rather than touching the page.
+   ============================================================ */
+
+export const AUDIT_ACTIONS = [
+  { key: 'login', label: 'Signed in', icon: '🔑', group: 'Access' },
+  { key: 'logout', label: 'Signed out', icon: '🚪', group: 'Access' },
+  { key: 'invoice_created', label: 'Tax invoice created', icon: '🧾', group: 'Documents' },
+  { key: 'invoice_updated', label: 'Tax invoice edited', icon: '✏️', group: 'Documents' },
+  { key: 'invoice_deleted', label: 'Tax invoice deleted', icon: '🗑', group: 'Documents' },
+  { key: 'proforma_created', label: 'Proforma created', icon: '📄', group: 'Documents' },
+  { key: 'proforma_updated', label: 'Proforma edited', icon: '✏️', group: 'Documents' },
+  { key: 'proforma_deleted', label: 'Proforma deleted', icon: '🗑', group: 'Documents' },
+  { key: 'pi_converted', label: 'Proforma converted', icon: '🔄', group: 'Documents' },
+  { key: 'doc_assigned', label: 'Document assigned', icon: '👤', group: 'Documents' },
+  { key: 'doc_unassigned', label: 'Document unassigned', icon: '👤', group: 'Documents' },
+  { key: 'number_collision', label: 'Number collision resolved', icon: '⚠️', group: 'Documents' },
+  { key: 'client_created', label: 'Client added', icon: '🏢', group: 'Clients' },
+  { key: 'client_updated', label: 'Client edited', icon: '🏢', group: 'Clients' },
+  { key: 'client_deleted', label: 'Client deleted', icon: '🗑', group: 'Clients' },
+  { key: 'clients_imported', label: 'Clients imported', icon: '📥', group: 'Clients' },
+  { key: 'invoices_imported', label: 'Invoices imported', icon: '📥', group: 'Documents' },
+  { key: 'user_created', label: 'User created', icon: '👥', group: 'Users' },
+  { key: 'user_updated', label: 'User updated', icon: '👥', group: 'Users' },
+  { key: 'user_deleted', label: 'User deleted', icon: '🗑', group: 'Users' },
+  { key: 'role_saved', label: 'Role saved', icon: '🎭', group: 'Users' },
+  { key: 'role_deleted', label: 'Role deleted', icon: '🎭', group: 'Users' },
+  { key: 'company_updated', label: 'Company details changed', icon: '⚙️', group: 'Settings' },
+  { key: 'numbering_updated', label: 'Numbering changed', icon: '⚙️', group: 'Settings' },
+  { key: 'data_exported', label: 'Data exported', icon: '⬇', group: 'Settings' },
+  { key: 'backup_restored', label: 'Backup restored', icon: '♻️', group: 'Settings' },
+  { key: 'backup_downloaded', label: 'Backup downloaded', icon: '💾', group: 'Settings' },
+  { key: 'doc_downloaded', label: 'Document downloaded', icon: '📄', group: 'Documents' },
+  { key: 'tds_updated', label: 'TDS records updated', icon: '🧮', group: 'Documents' },
+  { key: 'user_signup', label: 'Account self-registered', icon: '🆕', group: 'Access' },
+  { key: 'password_changed', label: 'Password changed', icon: '🔒', group: 'Access' },
+  { key: 'password_reset_sent', label: 'Password reset sent', icon: '✉️', group: 'Access' },
+  { key: 'template_downloaded', label: 'Template downloaded', icon: '📋', group: 'Settings' }
+];
+
+export const AUDIT_ACTION_MAP = AUDIT_ACTIONS.reduce((m, a) => { m[a.key] = a; return m; }, {});
+
+/** Entries kept. Old ones fall off the end; the log is a recent-activity trail. */
+export const AUDIT_LIMIT = 2000;
+
+/** A session idle longer than this resyncs everything on the next activity. */
+export const IDLE_RESYNC_MS = 2 * 60 * 60 * 1000;

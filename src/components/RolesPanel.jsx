@@ -21,7 +21,7 @@ function blankPermissions() {
  * change here reaches everyone holding that role.
  */
 export default function RolesPanel({ onClose }) {
-  const { roles, saveRoles, users, updateUsers, showToast, refreshSessionUser } = useApp();
+  const { roles, saveRoles, users, updateUsers, logActivity, showToast, refreshSessionUser } = useApp();
 
   const [activeId, setActiveId] = useState(roles[0] ? roles[0].id : null);
   const [draft, setDraft] = useState(null);
@@ -97,6 +97,7 @@ export default function RolesPanel({ onClose }) {
     }
     await saveRoles(roles.filter((r) => r.id !== active.id));
     refreshSessionUser();
+    logActivity('role_deleted', { name: active.name, count: assigned.length });
     showToast('Role deleted');
   }
 
@@ -112,6 +113,7 @@ export default function RolesPanel({ onClose }) {
       await saveRoles(roles.map((r) => (r.id === draft.id ? { ...draft, name, updatedAt: new Date().toISOString() } : r)));
       refreshSessionUser();
       const n = holders(draft.id).length;
+      logActivity('role_saved', { name, count: holders(draft.id).length });
       showToast('Saved "' + name + '"' + (n ? ' — applied to ' + n + ' user' + (n === 1 ? '' : 's') : ''));
     } finally {
       setSaving(false);

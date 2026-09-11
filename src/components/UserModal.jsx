@@ -7,7 +7,7 @@ import { deepClone } from '../utils';
 import { friendlyAuthError, sendResetEmail } from '../auth';
 
 export default function UserModal({ open, user, onClose, onSave }) {
-  const { getDefaultPermissionsForDept, roles, showToast } = useApp();
+  const { getDefaultPermissionsForDept, roles, logActivity, showToast } = useApp();
 
   const [firstName, setFirstName] = useState('');
   const [surname, setSurname] = useState('');
@@ -66,6 +66,7 @@ export default function UserModal({ open, user, onClose, onSave }) {
     try {
       await sendResetEmail(user.email);
       showToast('Password reset email sent to ' + user.email);
+      logActivity('password_reset_sent', { email: user.email, name: user.name });
     } catch (e) {
       showToast(friendlyAuthError(e), 'error');
     } finally {

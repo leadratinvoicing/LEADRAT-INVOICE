@@ -8,7 +8,7 @@ import PasswordInput from './PasswordInput';
 export default function SettingsPage() {
   const {
     currentUser, company, adminPass, numbering, invoices,
-    saveUsers, updateUsers, saveAdminPass, saveCompany, saveNumbering, enterApp, showToast, stateRef
+    saveUsers, updateUsers, saveAdminPass, saveCompany, saveNumbering, enterApp, logActivity, showToast, stateRef
   } = useApp();
 
   const [tab, setTab] = useState('profile');
@@ -55,6 +55,7 @@ export default function SettingsPage() {
       }
       setCurPass(''); setNewPass(''); setNewPass2('');
       showToast('Password updated successfully');
+      logActivity('password_changed', { email: (currentUser && currentUser.email) || 'Admin' });
     } catch (e) {
       showToast(friendlyAuthError(e), 'error');
     } finally {
@@ -106,6 +107,7 @@ export default function SettingsPage() {
     try {
       await saveCompany(next);
       showToast('Company information saved. New invoices will use these details.');
+      logActivity('company_updated', { note: 'Bill From details' });
     } catch (e) {
       showToast('Save failed: ' + (e.message || e), 'error');
     }
@@ -184,6 +186,7 @@ export default function SettingsPage() {
     try {
       await saveNumbering(next);
       showToast('Numbering & format saved. New documents will use these series.');
+      logActivity('numbering_updated', { note: 'document number series' });
     } catch (e) {
       showToast('Save failed: ' + (e.message || e), 'error');
     }

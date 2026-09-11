@@ -17,7 +17,7 @@ const SIGNUP_FIELDS = ['signupFirstName', 'signupSurname', 'signupEmail', 'signu
 export default function AuthScreen() {
   const {
     stateRef, reloadUsers, reloadInvoices, reloadClients, saveUsers, enterApp,
-    adminPass, signupInProgress, restoreBackup, showToast
+    adminPass, signupInProgress, restoreBackup, logActivity, showToast
   } = useApp();
 
   const [mode, setMode] = useState('signin'); // signin | signup | admin
@@ -165,6 +165,7 @@ export default function AuthScreen() {
       const nextUsers = [...latest, newUser];
       console.log('[signup] Writing users array to shared storage. Count:', nextUsers.length);
       await saveUsers(nextUsers);
+      logActivity('user_signup', { email, name: fullName, department });
 
       // VERIFY the write actually persisted by reading it back from storage
       let verified = false;

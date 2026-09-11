@@ -12,7 +12,7 @@ import { changeOwnPassword, friendlyAuthError } from '../auth';
  * signs out.
  */
 export default function ForcePasswordModal({ open, onDone, onSignOut }) {
-  const { currentUser, showToast } = useApp();
+  const { currentUser, logActivity, showToast } = useApp();
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -30,6 +30,7 @@ export default function ForcePasswordModal({ open, onDone, onSignOut }) {
     try {
       await changeOwnPassword(current, next);
       await onDone();
+      logActivity('password_changed', { email: (currentUser && currentUser.email) || '', note: 'required at sign-in' });
       showToast('Password updated');
     } catch (e) {
       showToast(friendlyAuthError(e), 'error');

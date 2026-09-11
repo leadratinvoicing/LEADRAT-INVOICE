@@ -393,3 +393,9 @@ tr.client-docs-row>td{padding:0;background:#F9FAFB;border-bottom:2px solid var(-
 .gst-reg-default input{width:14px;height:14px;accent-color:var(--brand);cursor:pointer}
 .reg-preview{margin-top:5px;font-size:9.5px;color:var(--brand-dark);background:var(--brand-light);border-radius:6px;padding:6px 9px;white-space:pre-wrap;line-height:1.5}
 .gst-count{margin-left:8px;font-size:9px;font-weight:600;color:var(--brand-dark);background:var(--brand-light);border-radius:10px;padding:1px 7px;vertical-align:middle}
+
+/* ===== AUDIT LOG ===== */
+.audit-time{font-size:10px;color:var(--text);font-variant-numeric:tabular-nums}
+.audit-rel{font-size:9px;color:var(--muted);margin-top:1px}
+.audit-action{display:inline-block;font-size:9.5px;font-weight:600;color:var(--brand-dark);background:var(--brand-light);border-radius:10px;padding:2px 8px}
+.audit-details{font-size:10px;color:var(--text);line-height:1.5;word-break:break-word}

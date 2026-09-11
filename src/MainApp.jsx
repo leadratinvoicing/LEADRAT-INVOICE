@@ -23,6 +23,7 @@ import InvoiceListPage from './components/InvoiceListPage';
 import ClientsPage from './components/ClientsPage';
 import BulkImportPage from './components/BulkImportPage';
 import UsersPage from './components/UsersPage';
+import AuditLogPage from './components/AuditLogPage';
 import SettingsPage from './components/SettingsPage';
 import InvoiceModal from './components/InvoiceModal';
 import ClientModal from './components/ClientModal';
@@ -43,6 +44,7 @@ const NAV = [
   { page: 'clients', label: 'Clients', perm: 'clients' },
   { page: 'import', label: 'Bulk Import', perm: 'import' },
   { page: 'users', label: 'Users & Permissions', perm: 'admin_only' },
+  { page: 'audit', label: 'Audit Log', perm: 'admin_only' },
   { page: 'settings', label: 'Settings', perm: 'settings' }
 ];
 
@@ -55,7 +57,7 @@ export default function MainApp() {
     updateInvoices, updateClients, updateUsers,
     reloadInvoices, reloadClients, reloadUsers, reloadRoles, fetchFreshInvoices,
     buildBackupPayload, restoreBackup,
-    appendAudit, clearSession, userCanAccess, refreshSessionUser, showToast
+    appendAudit, logActivity, resyncAll, clearSession, userCanAccess, refreshSessionUser, showToast
   } = useApp();
 
   const [page, setPage] = useState('dashboard');
@@ -124,16 +126,19 @@ export default function MainApp() {
     } else if (next === 'clients') setClientRegionFilter(filter || '');
     // Refresh shared data so this tab sees anything created in other sessions.
     try {
+      if (next === 'audit') await resyncAll();
       if (next === 'users') await Promise.all([reloadUsers(), reloadRoles()]);
       else if (next === 'dashboard') await Promise.all([reloadUsers(), reloadRoles(), reloadInvoices(), reloadClients()]);
       else if (next === 'invoices' || next === 'proforma') await Promise.all([reloadInvoices(), reloadClients()]);
       else if (next === 'clients') await reloadClients();
     } catch (e) { console.warn('Refresh failed', e); }
-  }, [userCanAccess, showToast, reloadUsers, reloadRoles, reloadInvoices, reloadClients]);
+  }, [userCanAccess, showToast, reloadUsers, reloadRoles, reloadInvoices, reloadClients, resyncAll]);
 
   async function doSignOut() {
     // Drop the local session first — the auth observer restores an admin session
     // from storage, so it must already be gone when Firebase reports the sign-out.
+    // Recorded before the session goes, so the entry carries who it was.
+    logActivity('logout', { email: (currentUser && currentUser.email) || 'Admin' });
     clearSession();
     await signOutFirebase();
   }
@@ -184,6 +189,11 @@ export default function MainApp() {
     }
     await saveInvoices(next);
     showToast('Deleted');
+    if (doomed) {
+      logActivity((doomed.docType === 'proforma' ? 'proforma' : 'invoice') + '_deleted', {
+        invoiceNo: doomed.invoiceNo, clientName: doomed.clientName, total: doomed.totalAmount
+      });
+    }
   }
 
   /** `format` is 'word' or 'pdf' — both render the same layout. */
@@ -197,6 +207,10 @@ export default function MainApp() {
         ? await generatePdf(d, stateRef.current.company)
         : await generateDocx(d, stateRef.current.company);
       showToast(label + ' downloaded: ' + fname);
+      logActivity('doc_downloaded', {
+        invoiceNo: d.invoiceNo, clientName: d.clientName,
+        format: format === 'pdf' ? 'pdf' : 'word'
+      });
     } catch (err) {
       console.error(err);
       showToast('Failed to generate ' + label + ': ' + (err.message || err), 'error');
@@ -248,6 +262,10 @@ export default function MainApp() {
     try {
       const fname = exportDocuments(list, docType, stateRef.current.invoices, format || 'xlsx');
       showToast('Exported ' + list.length + ' row' + (list.length === 1 ? '' : 's') + ' to ' + fname);
+      logActivity('data_exported', {
+        note: (docType === 'proforma' ? 'Proformas' : 'Tax invoices'),
+        count: list.length, format: format || 'xlsx'
+      });
     } catch (e) {
       console.error(e);
       showToast('Export failed: ' + (e.message || e), 'error');
@@ -440,6 +458,7 @@ export default function MainApp() {
           d.invoiceNo = free;
           showToast(taken + ' was taken by someone else at the same moment — '
             + 'this document is now ' + free + '.', 'warn');
+          logActivity('number_collision', { attempted: taken, reissuedAs: free, clientName: d.clientName });
         }
       } catch (e) {
         // Could not re-read; the write itself already succeeded.
@@ -447,6 +466,16 @@ export default function MainApp() {
       }
     }
     if (auditEntry) await appendAudit(auditEntry);
+    // Every create and edit is recorded, not just conversions.
+    if (!auditEntry) {
+      const kind = d.docType === 'proforma' ? 'proforma' : 'invoice';
+      logActivity(kind + (isNew ? '_created' : '_updated'), {
+        invoiceNo: d.invoiceNo,
+        clientName: d.clientName,
+        branch: d.branch,
+        total: d.totalAmount
+      });
+    }
 
     setInvoiceModal(CLOSED_INVOICE_MODAL);
     if (reconciled) {
@@ -592,6 +621,7 @@ export default function MainApp() {
       const payload = buildBackupPayload();
       downloadBackupFile(payload);
       showToast('Backup downloaded (' + payload._counts.invoices + ' invoices, ' + payload._counts.clients + ' clients, ' + payload._counts.users + ' users)');
+      logActivity('backup_downloaded', { count: payload._counts.invoices, note: 'full snapshot' });
     } catch (e) {
       console.error('Backup failed', e);
       showToast('Backup failed: ' + (e.message || e), 'error');
@@ -610,6 +640,7 @@ export default function MainApp() {
       if (!confirm(buildRestorePrompt(payload, current))) return;
       const counts = await restoreBackup(payload.data);
       showToast('Backup loaded: ' + counts.invoices + ' invoices, ' + counts.clients + ' clients, ' + counts.users + ' users');
+      logActivity('backup_restored', { count: counts.invoices, note: counts.clients + ' clients, ' + counts.users + ' users' });
     } catch (e) {
       console.error('Restore failed', e);
       showToast('Restore failed: ' + (e.message || e), 'error');
@@ -634,18 +665,25 @@ export default function MainApp() {
       : [...latest, { id: uid(), ...data, createdAt: new Date().toISOString() }]));
     setClientModal({ open: false, editing: null });
     showToast('Client saved');
+    logActivity(editing ? 'client_updated' : 'client_created', {
+      name: data.name, gstin: data.gstin
+    });
   }
 
   async function deleteClient(id) {
     if (!can('clients', 'delete')) return deny('delete clients');
+    // Capture it before removal so the log can name what was deleted.
+    const doomedClient = stateRef.current.clients.find((c) => c.id === id) || null;
     if (!confirm('Delete this client? Invoices for this client will not be deleted but will lose link.')) return;
     await updateClients((latest) => latest.filter((c) => c.id !== id));
     showToast('Client deleted');
+    logActivity('client_deleted', { name: (doomedClient && doomedClient.name) || '' });
   }
 
   function onDownloadClientTemplate() {
     try {
       downloadClientTemplate();
+      logActivity('template_downloaded', { note: 'Clients' });
       showToast('Template downloaded — fill it in and upload via Bulk Upload');
     } catch (e) {
       showToast('Failed to build template: ' + (e.message || e), 'error');
@@ -723,6 +761,7 @@ export default function MainApp() {
     let msg = 'Imported ' + added + ' client' + (added === 1 ? '' : 's');
     if (skippedNow > 0) msg += ' · ' + skippedNow + ' skipped (duplicates added by another user just now)';
     showToast(msg);
+    logActivity('clients_imported', { count: added, note: skippedNow ? skippedNow + ' skipped' : '' });
   }
 
   /* ---------------- BULK INVOICE IMPORT ---------------- */
@@ -876,6 +915,7 @@ export default function MainApp() {
     await saveClients(nextClients);
     setPendingImport(null);
     const mergeMsg = mergedItems > 0 ? ' · ' + mergedItems + ' extra rows merged as line-items' : '';
+    logActivity('invoices_imported', { count: added, note: skipped ? skipped + ' rows skipped' : '' });
     showToast('Imported ' + added + ' invoice' + (added === 1 ? '' : 's') + mergeMsg +
       (skipped ? ' (' + skipped + ' rows skipped for missing invoice_no/client)' : ''));
     navigate('invoices');
@@ -910,6 +950,12 @@ export default function MainApp() {
     };
     await saveInvoices(latest.map((x) => (x.id === id ? stamped : x)));
     setAssignModal({ open: false, id: null });
+    logActivity(patch.assignedTo ? 'doc_assigned' : 'doc_unassigned', {
+      invoiceNo: target.invoiceNo,
+      to: patch.assignedTo,
+      toName: patch.assignedToName,
+      clientName: target.clientName
+    });
     showToast(patch.assignedTo
       ? (target.invoiceNo || 'Document') + ' assigned to ' + (patch.assignedToName || patch.assignedTo)
       : (target.invoiceNo || 'Document') + ' unassigned');
@@ -923,6 +969,7 @@ export default function MainApp() {
     // permission or scope change takes effect without a sign-out.
     if (sameEmail(updated.email, currentUser && currentUser.email)) refreshSessionUser();
     showToast('User updated successfully');
+    logActivity('user_updated', { name: updated.name, email: updated.email });
   }
 
   /**
@@ -936,6 +983,7 @@ export default function MainApp() {
     }
     await saveUsers([...latest, profile]);
     setCreateUserOpen(false);
+    logActivity('user_created', { name: profile.name, email: profile.email, department: profile.department });
     showToast(profile.name + ' created · username ' + profile.email + ' · password ' + initialPassword);
     // The password is shown once and never stored, so make it hard to miss.
     alert(
@@ -960,20 +1008,23 @@ export default function MainApp() {
     if (!confirm('Delete this user account? This cannot be undone.')) return;
     await updateUsers((latest) => latest.filter((u) => u.email !== email));
     showToast('User deleted · their Firebase sign-in must be removed from the Firebase console separately');
+    logActivity('user_deleted', { email });
   }
 
   /* ---------------- TDS ---------------- */
   async function saveTdsChanges(pending) {
     const ids = Object.keys(pending);
     if (ids.length === 0) return showToast('No changes to save', 'warn');
-    const next = stateRef.current.invoices.map((inv) => {
+    // Re-read first: this replaces the whole collection, so a stale copy
+    // would drop invoices created by others since this tab loaded.
+    await updateInvoices((latest) => latest.map((inv) => {
       const ch = pending[inv.id];
       if (!ch) return inv;
       return { ...inv, ...ch, updatedAt: new Date().toISOString() };
-    });
-    await saveInvoices(next);
+    }));
     setTdsOpen(false);
     showToast('Updated TDS records for ' + ids.length + ' invoice' + (ids.length > 1 ? 's' : ''));
+    logActivity('tds_updated', { count: ids.length });
   }
 
   /* ---------------- RENDER ---------------- */
@@ -1094,10 +1145,12 @@ export default function MainApp() {
             onCancel={() => setPendingImport(null)}
             onDownloadIndiaTemplate={() => {
               downloadInvoiceTemplate();
+              logActivity('template_downloaded', { note: 'India invoices' });
               showToast('India template downloaded. Rows sharing invoice_no merge as multi-item. Fill amount_due for status=due.');
             }}
             onDownloadDubaiTemplate={() => {
               downloadDubaiTemplate();
+              logActivity('template_downloaded', { note: 'Dubai invoices' });
               showToast('Dubai template downloaded. AED currency, TRN, VAT @ 5%. Fill amount_due for status=due.');
             }}
           />
@@ -1110,6 +1163,7 @@ export default function MainApp() {
             onCreate={() => setCreateUserOpen(true)}
           />
         )}
+        {page === 'audit' && <AuditLogPage />}
         {page === 'settings' && <SettingsPage />}
       </div>
 
