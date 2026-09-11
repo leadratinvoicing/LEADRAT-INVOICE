@@ -335,3 +335,43 @@ export const AUDIT_LIMIT = 2000;
 
 /** A session idle longer than this resyncs everything on the next activity. */
 export const IDLE_RESYNC_MS = 2 * 60 * 60 * 1000;
+
+/* ============================================================
+   INDIAN CITIES
+   The city list offered when adding a client. Grouped by state so a long list
+   stays scannable, and ordered with the biggest business hubs first inside
+   each group. "Others" keeps the field open — a client in a town that is not
+   listed is typed in rather than forced into the nearest match.
+   ============================================================ */
+
+export const OTHER_CITY = 'Others';
+
+export const INDIAN_CITIES = [
+  { state: 'Delhi NCR', cities: ['New Delhi', 'Gurugram', 'Noida', 'Greater Noida', 'Ghaziabad', 'Faridabad'] },
+  { state: 'Maharashtra', cities: ['Mumbai', 'Navi Mumbai', 'Thane', 'Pune', 'Pimpri-Chinchwad', 'Nagpur', 'Nashik', 'Chhatrapati Sambhajinagar', 'Solapur', 'Kolhapur'] },
+  { state: 'Karnataka', cities: ['Bengaluru', 'Mysuru', 'Mangaluru', 'Hubballi-Dharwad', 'Belagavi'] },
+  { state: 'Telangana', cities: ['Hyderabad', 'Secunderabad', 'Warangal'] },
+  { state: 'Tamil Nadu', cities: ['Chennai', 'Coimbatore', 'Madurai', 'Tiruchirappalli', 'Salem', 'Tiruppur'] },
+  { state: 'Gujarat', cities: ['Ahmedabad', 'Surat', 'Vadodara', 'Rajkot', 'Gandhinagar', 'Bhavnagar'] },
+  { state: 'West Bengal', cities: ['Kolkata', 'Howrah', 'Siliguri', 'Durgapur'] },
+  { state: 'Rajasthan', cities: ['Jaipur', 'Jodhpur', 'Udaipur', 'Kota', 'Ajmer'] },
+  { state: 'Uttar Pradesh', cities: ['Lucknow', 'Kanpur', 'Agra', 'Varanasi', 'Prayagraj', 'Meerut', 'Bareilly'] },
+  { state: 'Kerala', cities: ['Kochi', 'Thiruvananthapuram', 'Kozhikode', 'Thrissur', 'Kollam'] },
+  { state: 'Madhya Pradesh', cities: ['Indore', 'Bhopal', 'Jabalpur', 'Gwalior', 'Ujjain'] },
+  { state: 'Andhra Pradesh', cities: ['Visakhapatnam', 'Vijayawada', 'Guntur', 'Tirupati', 'Nellore'] },
+  { state: 'Punjab', cities: ['Ludhiana', 'Amritsar', 'Jalandhar', 'Mohali', 'Patiala'] },
+  { state: 'Haryana', cities: ['Panipat', 'Karnal', 'Ambala', 'Hisar', 'Rohtak'] },
+  { state: 'Odisha', cities: ['Bhubaneswar', 'Cuttack', 'Rourkela'] },
+  { state: 'Bihar', cities: ['Patna', 'Gaya', 'Muzaffarpur', 'Bhagalpur'] },
+  { state: 'Jharkhand', cities: ['Ranchi', 'Jamshedpur', 'Dhanbad'] },
+  { state: 'Chhattisgarh', cities: ['Raipur', 'Bhilai', 'Bilaspur'] },
+  { state: 'Uttarakhand', cities: ['Dehradun', 'Haridwar', 'Haldwani', 'Rudrapur'] },
+  { state: 'Assam & North East', cities: ['Guwahati', 'Dibrugarh', 'Shillong', 'Imphal', 'Agartala', 'Itanagar'] },
+  { state: 'Himachal Pradesh', cities: ['Shimla', 'Dharamshala', 'Solan'] },
+  { state: 'Jammu, Kashmir & Ladakh', cities: ['Srinagar', 'Jammu', 'Leh'] },
+  { state: 'Goa', cities: ['Panaji', 'Margao', 'Vasco da Gama'] },
+  { state: 'Union Territories', cities: ['Chandigarh', 'Puducherry', 'Port Blair', 'Daman', 'Silvassa'] }
+];
+
+/** Fast membership test — tells a listed city from one typed under "Others". */
+export const INDIAN_CITY_SET = new Set(INDIAN_CITIES.flatMap((g) => g.cities));

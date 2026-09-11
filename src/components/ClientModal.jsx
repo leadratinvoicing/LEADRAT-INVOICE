@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../AppContext';
 import { isValidEmail } from '../utils';
+import { INDIAN_CITIES, INDIAN_CITY_SET, OTHER_CITY } from '../constants';
 import {
   clientGstins, MAX_CLIENT_GSTINS, normaliseClientGstins, validateClientGstins
 } from '../clientGst';
@@ -10,7 +11,9 @@ export default function ClientModal({ open, editingClient, onClose, onSave }) {
   const { showToast } = useApp();
   const [name, setName] = useState('');
   const [legalName, setLegalName] = useState('');
+  // The dropdown selection, and the free-text box shown when it is "Others".
   const [city, setCity] = useState('');
+  const [cityOther, setCityOther] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   // A client may be registered under more than one GSTIN, each with its own
@@ -29,7 +32,16 @@ export default function ClientModal({ open, editingClient, onClose, onSave }) {
     const c = editingClient;
     setName(c?.name || '');
     setLegalName(c?.legalName || c?.name || '');
-    setCity(c?.city || '');
+    // A city saved before this list existed — or typed under "Others" —
+    // reopens in the Others box rather than being silently dropped.
+    const saved = (c?.city || '').trim();
+    if (!saved) {
+      setCity(''); setCityOther('');
+    } else if (INDIAN_CITY_SET.has(saved)) {
+      setCity(saved); setCityOther('');
+    } else {
+      setCity(OTHER_CITY); setCityOther(saved);
+    }
     setEmail(c?.email || '');
     setPhone(c?.phone || '');
     setRegs(clientGstins(c || {}));
@@ -71,6 +83,12 @@ export default function ClientModal({ open, editingClient, onClose, onSave }) {
     const em = email.trim(), ph = phone.trim();
     if (!n) return fail('cltName', 'Client name is required');
 
+    // "Others" is only meaningful once the city is actually named.
+    const cityValue = city === OTHER_CITY ? cityOther.trim() : city;
+    if (city === OTHER_CITY && !cityValue) {
+      return fail('cltCityOther', 'Please specify the city');
+    }
+
     const gstError = validateClientGstins(regs);
     if (gstError) return showToast(gstError, 'error');
 
@@ -88,7 +106,7 @@ export default function ClientModal({ open, editingClient, onClose, onSave }) {
       await onSave({
         name: n,
         legalName: legalName.trim(),
-        city: city.trim(),
+        city: cityValue,
         email: em,
         phone: ph,
         // The default is mirrored onto the flat fields so every existing reader
@@ -126,8 +144,25 @@ export default function ClientModal({ open, editingClient, onClose, onSave }) {
       </div>
       <div className="form-group">
         <label className="form-label">City</label>
-        <input type="text" className="form-input" placeholder="e.g. Pune, Bengaluru, Mumbai (optional)"
-          value={city} onChange={(e) => setCity(e.target.value)} />
+        <select className="form-input" value={city}
+          onChange={(e) => { setCity(e.target.value); setBadField(null); }}>
+          <option value="">-- Select a city (optional) --</option>
+          {INDIAN_CITIES.map((g) => (
+            <optgroup key={g.state} label={g.state}>
+              {g.cities.map((c) => <option key={c} value={c}>{c}</option>)}
+            </optgroup>
+          ))}
+          <option value={OTHER_CITY}>{OTHER_CITY} (please specify)</option>
+        </select>
+        {city === OTHER_CITY && (
+          <div style={{ marginTop: 8 }}>
+            <input ref={bind('cltCityOther')} type="text" className={cls('cltCityOther')}
+              placeholder="Type the city name"
+              value={cityOther}
+              onChange={(e) => { setCityOther(e.target.value); setBadField(null); }} />
+            <div className="password-hint">Not in the list — enter the city as it should appear on records.</div>
+          </div>
+        )}
       </div>
       <div className="form-grid-2">
         <div className="form-group">
