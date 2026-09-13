@@ -14,34 +14,59 @@ const PREFIX = 'leadrat:columns:';
 
 const keyFor = (tableId, user) => PREFIX + tableId + ':' + ((user && user.email) || 'anon');
 
-/** Read the stored selection, dropping keys for columns that no longer exist. */
+/**
+ * Read the stored selection.
+ *
+ * Two things are remembered, not one: which columns are VISIBLE, and which
+ * columns the user has actually SEEN. Without the second, a column added to
+ * the app later would be absent from every saved selection and so stay hidden
+ * forever — the user would never discover it existed. A column the user has
+ * not seen yet is shown; once they touch the picker it is recorded as seen and
+ * their choice sticks from then on.
+ */
 export function loadColumnPrefs(tableId, user, allColumns) {
   const valid = new Set(allColumns.map((c) => c.key));
+  const defaults = () => new Set(allColumns.filter((c) => !c.hiddenByDefault).map((c) => c.key));
   try {
     const raw = localStorage.getItem(keyFor(tableId, user));
-    if (raw) {
-      const saved = JSON.parse(raw);
-      if (Array.isArray(saved)) return new Set(saved.filter((k) => valid.has(k)));
+    if (!raw) return defaults();
+    const saved = JSON.parse(raw);
+    // Older installs stored a bare array of visible keys and no "seen" list.
+    const visible = Array.isArray(saved) ? saved : (saved && saved.visible) || [];
+    const legacy = Array.isArray(saved);
+    const seen = new Set(legacy ? [] : ((saved && saved.seen) || []));
+    const next = new Set(visible.filter((k) => valid.has(k)));
+    for (const c of allColumns) {
+      if (visible.includes(c.key) || c.hiddenByDefault) continue;
+      // Old prefs list only the visible keys, so "absent" is ambiguous: it may
+      // be a column the user hid, or one added since. Only columns explicitly
+      // flagged as newly introduced are surfaced, so a deliberate choice to
+      // hide something is never undone. Newer prefs carry a "seen" list and
+      // need no flag.
+      if (legacy ? c.isNew : !seen.has(c.key)) next.add(c.key);
     }
+    return next.size ? next : defaults();
   } catch { /* unreadable or private mode — fall through to the defaults */ }
-  // No stored choice: everything except the columns marked as off by default.
-  return new Set(allColumns.filter((c) => !c.hiddenByDefault).map((c) => c.key));
+  return defaults();
 }
 
-function saveColumnPrefs(tableId, user, visible) {
+function saveColumnPrefs(tableId, user, visible, allColumns) {
   try {
-    localStorage.setItem(keyFor(tableId, user), JSON.stringify([...visible]));
+    // `seen` is every column that existed at the moment of the choice, so a
+    // column added later can still surface itself exactly once.
+    const payload = { visible: [...visible], seen: (allColumns || []).map((c) => c.key) };
+    localStorage.setItem(keyFor(tableId, user), JSON.stringify(payload));
   } catch { /* nothing we can do; the choice just won't survive a reload */ }
 }
+
+const PANEL_WIDTH = 230;
+const PANEL_MAX_HEIGHT = 380;
+const EDGE = 8;
 
 /**
  * `visible` is a Set of column keys. `onChange` receives the next Set, which
  * this component also persists.
  */
-const PANEL_WIDTH = 230;
-const PANEL_MAX_HEIGHT = 380;
-const EDGE = 8;
-
 export default function ColumnPicker({ tableId, user, allColumns, visible, onChange, label = 'Columns' }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState(null);
@@ -94,7 +119,7 @@ export default function ColumnPicker({ tableId, user, allColumns, visible, onCha
   }, [open, reposition]);
 
   function apply(next) {
-    saveColumnPrefs(tableId, user, next);
+    saveColumnPrefs(tableId, user, next, allColumns);
     onChange(next);
   }
 

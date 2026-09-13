@@ -59,6 +59,7 @@ export default function InvoiceListPage({
     pending: (d) => pendingOf(d, invoices),
     status: (d) => statusBadgeOf(d, invoices).label,
     createdBy: (d) => d.createdBy || '',
+    createdAt: (d) => parseDateValue(d.createdAt) || 0,
     assignedTo: (d) => assigneeLabel(d, users) || '',
     dueDate: (d) => parseDateValue(d.dueDate || d.invoiceDate)
   }), [invoices, users]);
@@ -144,6 +145,28 @@ export default function InvoiceListPage({
           {d.createdBy || '—'}
         </td>
       )
+    });
+    cols.push({
+      key: 'createdAt',
+      label: 'Created On',
+      // Introduced after people had already saved column choices, so it surfaces
+      // itself once for them rather than staying invisible forever.
+      isNew: true,
+      // When the record was actually raised in the system, as distinct from
+      // the Date column, which is the invoice date printed on the document —
+      // the two differ whenever a document is back-dated.
+      render: (d) => {
+        const t = d.createdAt ? new Date(d.createdAt) : null;
+        if (!t || isNaN(t.getTime())) return <td style={{ fontSize: 10, color: 'var(--muted)' }}>—</td>;
+        return (
+          <td style={{ fontSize: 10, whiteSpace: 'nowrap' }} title={t.toLocaleString('en-GB')}>
+            <div>{t.toLocaleDateString('en-GB')}</div>
+            <div style={{ fontSize: 9, color: 'var(--muted)' }}>
+              {t.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+            </div>
+          </td>
+        );
+      }
     });
     cols.push({
       key: 'assignedTo',

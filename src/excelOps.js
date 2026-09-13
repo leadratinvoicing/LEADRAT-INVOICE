@@ -130,6 +130,7 @@ export function buildExportRows(list, docType, allDocs) {
     pending_amount: pendingOf(d, scope),
     converted_to: d.docType === 'proforma' ? (d.convertedToInvoiceNo || '') : '',
     created_by: d.createdBy || '',
+    created_at: d.createdAt ? fmtDate(d.createdAt) : '',
     raised_against_proforma: d.docType === 'proforma' ? '' : (d.sourceProformaNo || ''),
     due_date: fmtDate(d.dueDate)
   }));
