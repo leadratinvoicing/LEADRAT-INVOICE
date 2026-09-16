@@ -60,7 +60,8 @@ export const PAYMENT_MODES = [
 export const BRANCHES = [
   { value: 'pune', name: 'Pune', label: '🇮🇳 Pune', country: 'india' },
   { value: 'bengaluru', name: 'Bengaluru', label: '🇮🇳 Bengaluru', country: 'india' },
-  { value: 'dubai', name: 'Dubai', label: '🇦🇪 Dubai', country: 'dubai' }
+  { value: 'dubai', name: 'Dubai', label: '🇦🇪 Dubai', country: 'dubai' },
+  { value: 'abudhabi', name: 'Abu Dhabi', label: '🇦🇪 Abu Dhabi', country: 'dubai' }
 ];
 
 /**
@@ -69,18 +70,20 @@ export const BRANCHES = [
  * Admins always have full access regardless of this setting.
  */
 export const BRANCH_ACCESS_OPTIONS = [
-  { value: 'all', label: '🌐 All Branches (Pune + Bengaluru + Dubai)', short: '🌐 All' },
+  { value: 'all', label: '🌐 All Branches (India + UAE)', short: '🌐 All' },
   { value: 'india', label: '🇮🇳 India Only (Pune + Bengaluru)', short: '🇮🇳 India' },
   { value: 'pune', label: '🇮🇳 Pune Only', short: '🇮🇳 Pune' },
   { value: 'bengaluru', label: '🇮🇳 Bengaluru Only', short: '🇮🇳 Bengaluru' },
-  { value: 'dubai', label: '🇦🇪 Dubai Only', short: '🇦🇪 Dubai' }
+  { value: 'dubai', label: '🇦🇪 UAE (Dubai + Abu Dhabi)', short: '🇦🇪 UAE' },
+  { value: 'dubaiOnly', label: '🇦🇪 Dubai Only', short: '🇦🇪 Dubai' },
+  { value: 'abudhabi', label: '🇦🇪 Abu Dhabi Only', short: '🇦🇪 Abu Dhabi' }
 ];
 
 /** The three region tabs shared by the dashboard and the clients page filter. */
 export const REGION_TABS = [
   { value: 'all', label: '🌐 All' },
   { value: 'india', label: '🇮🇳 India' },
-  { value: 'dubai', label: '🇦🇪 Dubai' }
+  { value: 'dubai', label: '🇦🇪 UAE' }
 ];
 
 export const PERMISSION_MODULES = [
@@ -115,7 +118,7 @@ export const DATA_SCOPE_OPTIONS = [
 export const BUILT_IN_ROLE_SEEDS = [
   { id: 'role_admin_ops', name: 'Finance Manager', description: 'Full access to every document and client record.', from: 'Finance', dataScope: 'all' },
   { id: 'role_sales_lead', name: 'Sales Lead', description: 'Creates and edits documents across the team, sees everything.', from: 'Sales', dataScope: 'all' },
-  { id: 'role_sales_rep', name: 'Sales Executive', description: 'Works their own book — sees only what they raised or were assigned.', from: 'Sales', dataScope: 'own' },
+  { id: 'role_sales_rep', name: 'Sales Manager', description: 'Works their own book — sees only what they raised or were assigned.', from: 'Sales', dataScope: 'own' },
   { id: 'role_cs', name: 'Customer Success', description: 'Manages renewals and client records for their own accounts.', from: 'Customer Success', dataScope: 'own' },
   { id: 'role_viewer', name: 'Read Only', description: 'Can view and export, but cannot change anything.', from: 'Development', dataScope: 'all' }
 ];
@@ -199,6 +202,15 @@ export const DEFAULT_COMPANY = {
     trn: '104804338200003',
     licenseNo: '1451890'
   },
+  // Abu Dhabi trades as the same UAE entity as Dubai, so the address, TRN and
+  // licence are identical. Held as its own block rather than an alias, so the
+  // two can be given separate details later without a data migration.
+  abudhabi: {
+    name: 'DHINWA SOLUTIONS TRADING L.L.C',
+    address: 'PHASE - 1, BLOCK - J, UNIT # 7 - 8,\nDUBAI INDUSTRIAL CITY, DUBAI U.A.E',
+    trn: '104804338200003',
+    licenseNo: '1451890'
+  },
   bank: {
     name: 'ICICI BANK',
     accName: 'DHINWA SOLUTIONS PRIVATE LIMITED',
@@ -224,22 +236,30 @@ export const DEFAULT_NUMBERING = {
   // India (Pune + Bengaluru) and Dubai.
   proPrefix: 'DSL/26-27/PI-',
   proPrefixDbx: 'DSL/26-27/DB-PI-',
+  invPrefixAbd: 'DSL/26-27/AD-',
+  proPrefixAbd: 'DSL/26-27/AD-PI-',
   nextInvPune: 11,
   nextInvBlu: 7,
   nextInvDbx: 41, // starts after DB-040 per reference
   nextPro: 88,
   nextProDbx: 1,
+  nextInvAbd: 1,
+  nextProAbd: 1,
   // Format controls — a document number is prefix + zero-padded counter + suffix.
   invPadPune: 3,
   invPadBlu: 3,
   invPadDbx: 3,
   proPad: 3,
   proPadDbx: 3,
+  invPadAbd: 3,
+  proPadAbd: 3,
   invSuffixPune: '',
   invSuffixBlu: '',
   invSuffixDbx: '',
   proSuffix: '',
-  proSuffixDbx: ''
+  proSuffixDbx: '',
+  invSuffixAbd: '',
+  proSuffixAbd: ''
 };
 
 /**
@@ -267,6 +287,14 @@ export const NUMBER_SERIES = [
   {
     key: 'proformaDubai', label: 'Dubai Proforma Invoice', docType: 'proforma', branch: 'dubai',
     prefixKey: 'proPrefixDbx', nextKey: 'nextProDbx', padKey: 'proPadDbx', suffixKey: 'proSuffixDbx'
+  },
+  {
+    key: 'abudhabi', label: 'Abu Dhabi Tax Invoice', docType: 'invoice', branch: 'abudhabi',
+    prefixKey: 'invPrefixAbd', nextKey: 'nextInvAbd', padKey: 'invPadAbd', suffixKey: 'invSuffixAbd'
+  },
+  {
+    key: 'proformaAbuDhabi', label: 'Abu Dhabi Proforma Invoice', docType: 'proforma', branch: 'abudhabi',
+    prefixKey: 'proPrefixAbd', nextKey: 'nextProAbd', padKey: 'proPadAbd', suffixKey: 'proSuffixAbd'
   }
 ];
 

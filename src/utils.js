@@ -41,9 +41,20 @@ export function fmtMoneyForRegion(n, region) {
   return fmtMoneyR(n);
 }
 
-/** Dubai is its own region; Pune and Bengaluru are both "india". */
+/**
+ * The UAE branches. They share one legal entity — same address, TRN, licence
+ * and bank — and one tax regime (VAT, AED), so every check that used to ask
+ * "is this Dubai?" is really asking "is this the UAE?".
+ */
+export const UAE_BRANCHES = new Set(['dubai', 'abudhabi']);
+
+export function isUaeBranch(branch) {
+  return UAE_BRANCHES.has(branch);
+}
+
+/** The UAE branches form one region; Pune and Bengaluru are both "india". */
 export function regionOf(branch) {
-  return branch === 'dubai' ? 'dubai' : 'india';
+  return isUaeBranch(branch) ? 'dubai' : 'india';
 }
 
 /* ============================================================
@@ -65,7 +76,11 @@ export function allowedBranchesForUser(user) {
   if (b === 'india') return new Set(['pune', 'bengaluru']);
   if (b === 'pune') return new Set(['pune']);
   if (b === 'bengaluru') return new Set(['bengaluru']);
-  if (b === 'dubai') return new Set(['dubai']);
+  // 'dubai' historically meant the UAE, and still does — it now covers both
+  // emirates. 'dubaiOnly' and 'abudhabi' narrow it to a single branch.
+  if (b === 'dubai') return new Set(['dubai', 'abudhabi']);
+  if (b === 'dubaiOnly') return new Set(['dubai']);
+  if (b === 'abudhabi') return new Set(['abudhabi']);
   return null;
 }
 
@@ -98,7 +113,7 @@ export function visibleRegionsForUser(user) {
   const access = (user && user.branchAccess) || 'all';
   if (isAdmin || access === 'all') return new Set(['all', 'india', 'dubai']);
   if (access === 'india' || access === 'pune' || access === 'bengaluru') return new Set(['india']);
-  if (access === 'dubai') return new Set(['dubai']);
+  if (access === 'dubai' || access === 'dubaiOnly' || access === 'abudhabi') return new Set(['dubai']);
   return new Set(['all', 'india', 'dubai']);
 }
 
@@ -111,12 +126,13 @@ export function clientRegionMap(invoices) {
   for (const inv of invoices) {
     if (!inv.clientId) continue;
     if (!map.has(inv.clientId)) map.set(inv.clientId, new Set());
-    map.get(inv.clientId).add(inv.branch === 'dubai' ? 'dubai' : 'india');
+    map.get(inv.clientId).add(regionOf(inv.branch));
   }
   return map;
 }
 
 export function branchLabel(branch) {
+  if (branch === 'abudhabi') return '\uD83C\uDDE6\uD83C\uDDEA Abu Dhabi';
   if (branch === 'dubai') return '\uD83C\uDDE6\uD83C\uDDEA Dubai';
   if (branch === 'bengaluru') return '\uD83C\uDDEE\uD83C\uDDF3 Bengaluru';
   return '\uD83C\uDDEE\uD83C\uDDF3 Pune';
@@ -268,7 +284,11 @@ export function nextAvailableNumber(invoices, prefix, fallbackCounter) {
 /** Which of the five series a document belongs to (see NUMBER_SERIES). */
 export function seriesKeyFor(docType, branch) {
   // Proformas and tax invoices each split India (Pune + Bengaluru) from Dubai.
-  if (docType === 'proforma') return branch === 'dubai' ? 'proformaDubai' : 'proforma';
+  if (docType === 'proforma') {
+    if (branch === 'abudhabi') return 'proformaAbuDhabi';
+    return branch === 'dubai' ? 'proformaDubai' : 'proforma';
+  }
+  if (branch === 'abudhabi') return 'abudhabi';
   if (branch === 'dubai') return 'dubai';
   if (branch === 'bengaluru') return 'bengaluru';
   return 'pune';
@@ -673,7 +693,7 @@ export function itemTaxBreakdown(totalAmount, rate, gstType) {
  * they print and the totals they print come from the same arithmetic.
  */
 export function documentItemBreakdown(doc) {
-  const rate = parseFloat(doc.gstRate) || (doc.branch === 'dubai' ? 5 : 18);
+  const rate = parseFloat(doc.gstRate) || (isUaeBranch(doc.branch) ? 5 : 18);
   const gstType = doc.gstType || 'cgst_sgst';
   const rows = (Array.isArray(doc.items) && doc.items.length > 0) ? doc.items : [doc];
 

@@ -98,7 +98,7 @@ export default function BulkImportPage({
                       </td>
                       <td>{r.client_name || <em style={{ color: '#dc2626' }}>missing</em>}</td>
                       <td>{r.invoice_date ? fmtDate(formatExcelDate(r.invoice_date)) : ''}</td>
-                      <td>{fmtMoneyForRegion(r.total_amount || 0, branch === 'dubai' ? 'dubai' : 'india')}</td>
+                      <td>{fmtMoneyForRegion(r.total_amount || 0, (branch === 'dubai' || branch === 'abudhabi') ? 'dubai' : 'india')}</td>
                       <td>{r.status || 'paid'}</td>
                     </tr>
                   );

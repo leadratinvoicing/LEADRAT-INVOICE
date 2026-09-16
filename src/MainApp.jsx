@@ -13,7 +13,7 @@ import { NUMBER_SERIES } from './constants';
 import {
   deepClone, fmtMoneyForRegion, formatExcelDate, invoicesForProforma, isValidEmail, MONEY_EPS,
   nextAvailableNumber, nextDocNumber, pad, proformaState, receivedOf, regionOf, round2,
-  sameEmail, seriesConfig, seriesKeyFor, uid, visibleDocsFor
+  isUaeBranch, sameEmail, seriesConfig, seriesKeyFor, uid, visibleDocsFor
 } from './utils';
 import { advanceCounter, findDuplicateNumber, suggestDocNumber, syncCounters } from './numbering';
 import { hasMultipleClientGstins } from './clientGst';
@@ -580,7 +580,7 @@ export default function MainApp() {
       // the number was the suggestion or a deliberate override.
       autoSuggestedNo: suggestedNumber || chosenNumber,
       invoiceDate: today,
-      paymentMode: p.paymentMode || (branch === 'dubai' ? 'BANK TRANSFER' : 'NEFT'),
+      paymentMode: p.paymentMode || (isUaeBranch(branch) ? 'BANK TRANSFER' : 'NEFT'),
       // Converting normally means the money has arrived; the form's Payment
       // Status can be switched to "Amount Due" to record a part payment instead.
       status: 'paid',
@@ -600,7 +600,7 @@ export default function MainApp() {
     // line, so the default is the amount still pending — not the full proforma.
     if (st.invoiced > MONEY_EPS) {
       const src = (Array.isArray(p.items) && p.items[0]) || p;
-      const rate = +p.gstRate || (branch === 'dubai' ? 5 : 18);
+      const rate = +p.gstRate || (isUaeBranch(branch) ? 5 : 18);
       draft.items = [{
         ...deepClone(src),
         subType: 'Balance Pay',
@@ -800,7 +800,7 @@ export default function MainApp() {
       const first = rowsForInvoice[0];
 
       const branch = normaliseBranch(first.branch);
-      const isDubai = branch === 'dubai';
+      const isDubai = isUaeBranch(branch);
       const docType = String(first.doc_type || 'invoice').toLowerCase().includes('pro') ? 'proforma' : 'invoice';
       const dt = formatExcelDate(first.invoice_date);
       const dueD = formatExcelDate(first.due_date);

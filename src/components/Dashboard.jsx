@@ -4,7 +4,7 @@ import { REGION_TABS } from '../constants';
 import {
   branchLabel, dataScopeOf, filterByDateRange, fmtDate, fmtMoneyForRegion, outstandingOf,
   parseDateValue, receivedOf, regionOf, revenueBySubType, round2, statusBadgeOf,
-  visibleClientsFor, visibleDocsFor, visibleRegionsForUser
+  isUaeBranch, visibleClientsFor, visibleDocsFor, visibleRegionsForUser
 } from '../utils';
 import DateRangeFilter from './DateRangeFilter';
 import SortableTh, { sortRows, useSort } from './SortableTh';
@@ -47,8 +47,8 @@ export default function Dashboard({ onOpenTds, onViewUser, onNavigate, onDownloa
   // "india" = pune + bengaluru; "dubai" = dubai; "all" = everything.
   const belongsToRegion = (d) => {
     if (region === 'all') return true;
-    if (region === 'dubai') return d.branch === 'dubai';
-    return d.branch !== 'dubai';
+    if (region === 'dubai') return isUaeBranch(d.branch);
+    return !isUaeBranch(d.branch);
   };
 
   // Apply the CURRENT USER'S branch access first, then the region filter, then
@@ -110,12 +110,12 @@ export default function Dashboard({ onOpenTds, onViewUser, onNavigate, onDownloa
   const subTypeTotal = round2(subTypeRows.reduce((s, r) => s + r.revenue, 0));
 
   const taxLabel = region === 'dubai' ? 'Total VAT Collected' : 'Total GST Collected';
-  const taxMeta = region === 'dubai' ? 'VAT @ 5% (Dubai)' : 'CGST+SGST+IGST';
+  const taxMeta = region === 'dubai' ? 'VAT @ 5% (UAE)' : 'CGST+SGST+IGST';
 
   // Drilling in keeps the region that is selected here: the Dubai tab opens
   // Dubai documents only, the India tab opens Pune + Bengaluru only.
   const regionArg = region === 'all' ? '' : region;
-  const regionNote = region === 'all' ? '' : (region === 'dubai' ? ' · Dubai only' : ' · India only');
+  const regionNote = region === 'all' ? '' : (region === 'dubai' ? ' · UAE only' : ' · India only');
 
   const stats = [
     { label: 'Total Invoices', value: inv.length, meta: 'Tax invoices' + (regionNote || ' · click to view'), cls: '', onClick: () => onNavigate('invoices', '', regionArg) },

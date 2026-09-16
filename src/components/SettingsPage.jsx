@@ -67,6 +67,21 @@ export default function SettingsPage() {
     setDraft((d) => ({ ...d, [branchKey]: { ...d[branchKey], [field]: value } }));
 
 
+  /** Abu Dhabi normally mirrors Dubai — this re-syncs it after a Dubai edit. */
+  function copyDubaiToAbuDhabi() {
+    setDraft((d) => ({
+      ...d,
+      abudhabi: {
+        ...d.abudhabi,
+        name: d.dubai?.name || '',
+        address: d.dubai?.address || '',
+        trn: d.dubai?.trn || '',
+        licenseNo: d.dubai?.licenseNo || ''
+      }
+    }));
+    showToast('Copied Dubai details — click Save Company Info to apply');
+  }
+
   async function saveCompanyInfo() {
     if (!isAdmin) return showToast('Only admin can edit company information', 'error');
 
@@ -87,6 +102,12 @@ export default function SettingsPage() {
         address: draft.dubai?.address || '',
         trn: (draft.dubai?.trn || '').trim(),
         licenseNo: (draft.dubai?.licenseNo || '').trim()
+      },
+      abudhabi: {
+        name: (draft.abudhabi?.name || '').trim(),
+        address: draft.abudhabi?.address || '',
+        trn: (draft.abudhabi?.trn || '').trim(),
+        licenseNo: (draft.abudhabi?.licenseNo || '').trim()
       },
       bank: {
         name: (draft.bank?.name || '').trim(),
@@ -277,9 +298,10 @@ export default function SettingsPage() {
               <button className={'tab' + (coTab === 'pune' ? ' active' : '')} onClick={() => setCoTab('pune')}>Pune Branch</button>
               <button className={'tab' + (coTab === 'bengaluru' ? ' active' : '')} onClick={() => setCoTab('bengaluru')}>Bengaluru Branch</button>
               <button className={'tab' + (coTab === 'dubai' ? ' active' : '')} onClick={() => setCoTab('dubai')}>Dubai Branch</button>
+              <button className={'tab' + (coTab === 'abudhabi' ? ' active' : '')} onClick={() => setCoTab('abudhabi')}>Abu Dhabi Branch</button>
             </div>
 
-            {coTab !== 'dubai' && (
+            {coTab !== 'dubai' && coTab !== 'abudhabi' && (
               <div className="tab-content show">
                 <div className="form-group">
                   <label className="form-label">Company Name</label>
@@ -356,6 +378,45 @@ export default function SettingsPage() {
                     {coInput('dubaiBank', 'currency')}
                   </div>
                 </div>
+              </div>
+            )}
+
+            {coTab === 'abudhabi' && (
+              <div className="tab-content show">
+                <p style={{ fontSize: 10, marginBottom: 12, color: 'var(--muted)' }}>
+                  Abu Dhabi bills as the same UAE entity as Dubai — the address, TRN and licence start
+                  out identical, and the RAK Bank details on the Dubai tab are shared. Edit here only if
+                  the two ever need to differ.
+                </p>
+                <div className="form-group">
+                  <label className="form-label">Company Name</label>
+                  {coInput('abudhabi', 'name')}
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Address</label>
+                  <textarea
+                    className="form-input" rows={3}
+                    value={draft.abudhabi?.address || ''}
+                    disabled={!isAdmin} readOnly={!isAdmin}
+                    onChange={(e) => setBranchField('abudhabi', 'address', e.target.value)}
+                  />
+                </div>
+                <div className="form-grid-2">
+                  <div className="form-group">
+                    <label className="form-label">TRN</label>
+                    {coInput('abudhabi', 'trn')}
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">LICENSE NO</label>
+                    {coInput('abudhabi', 'licenseNo')}
+                  </div>
+                </div>
+                {isAdmin && (
+                  <button className="btn btn-secondary btn-sm" style={{ marginTop: 10 }}
+                    onClick={copyDubaiToAbuDhabi}>
+                    ⧉ Copy Dubai details
+                  </button>
+                )}
               </div>
             )}
 

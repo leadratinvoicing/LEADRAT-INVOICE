@@ -4,7 +4,7 @@ import {
 } from 'docx';
 import { saveAs } from 'file-saver';
 import { LOGO_DATA_URI } from './logo';
-import { documentItemBreakdown, fmtDate, numberToWords } from './utils';
+import { documentItemBreakdown, fmtDate, isUaeBranch, numberToWords } from './utils';
 import {
   NOTE_ELECTRONIC, PROFORMA_NOTES, RUN_FONT, buildFilename, dataUriBytes, fmtMoneyDocx, titleCase
 } from './docxShared';
@@ -27,7 +27,7 @@ export async function generateDocx(d, company) {
   if (!d) throw new Error('Document not found');
 
   const isProforma = d.docType === 'proforma';
-  const isDubai = d.branch === 'dubai';
+  const isDubai = isUaeBranch(d.branch);
   const co = company[d.branch] || company.pune;
   const bank = isDubai ? (company.dubaiBank || company.bank) : company.bank;
   const money = fmtMoneyDocx;

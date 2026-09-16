@@ -3,7 +3,7 @@ import { useApp } from '../AppContext';
 import { BRANCHES } from '../constants';
 import {
   assigneeLabel, branchLabel, dataScopeOf, filterByDateRange, fmtDate, fmtMoneyForRegion, MONEY_EPS,
-  parseDateValue, pendingOf, proformaState, receivedOf, regionOf, sameEmail, statusBadgeOf, visibleDocsFor
+  isUaeBranch, parseDateValue, pendingOf, proformaState, receivedOf, regionOf, sameEmail, statusBadgeOf, visibleDocsFor
 } from '../utils';
 import ColumnPicker, { loadColumnPrefs } from './ColumnPicker';
 import ExportMenu from './ExportMenu';
@@ -217,7 +217,7 @@ export default function InvoiceListPage({
     });
   }
   // 'india' is the two Indian branches together; anything else is a single branch.
-  if (branch === 'india') list = list.filter((d) => d.branch !== 'dubai');
+  if (branch === 'india') list = list.filter((d) => !isUaeBranch(d.branch));
   else if (branch) list = list.filter((d) => d.branch === branch);
   if (clientFilter) {
     const named = (clients.find((c) => c.id === clientFilter) || {}).name || '';
@@ -322,7 +322,7 @@ export default function InvoiceListPage({
         label="Invoice date"
         count={list.length}
         noun={(isInvoice ? 'tax invoice' : 'proforma') + (list.length === 1 ? '' : 's') +
-          ' raised · ' + fmtMoneyForRegion(rangeTotal, branch === 'dubai' ? 'dubai' : 'india') + ' billed'}
+          ' raised · ' + fmtMoneyForRegion(rangeTotal, regionOf(branch)) + ' billed'}
       />
 
       <div className="table-wrap">

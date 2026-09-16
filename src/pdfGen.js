@@ -1,7 +1,7 @@
 import { jsPDF } from 'jspdf';
 import { APTOS_NARROW_BOLD, APTOS_NARROW_REGULAR } from './fonts/aptosNarrow';
 import { DUBAI_LOGO_DATA_URI, LOGO_DATA_URI } from './logo';
-import { aedToWords, documentItemBreakdown, fmtDate, numberToWords } from './utils';
+import { aedToWords, documentItemBreakdown, fmtDate, isUaeBranch, numberToWords } from './utils';
 import {
   NOTE_ELECTRONIC, PROFORMA_NOTES, buildFilename, fmtMoneyAed, fmtMoneyDocx, titleCase
 } from './docxShared';
@@ -232,7 +232,7 @@ const para = (runs, opts) => ({ runs, ...(opts || {}) });
 /** Render the document — shared by the download and the on-screen preview. */
 function buildPdfDocument(d, company) {
   if (!d) throw new Error('Document not found');
-  const isDubai = d.branch === 'dubai';
+  const isDubai = isUaeBranch(d.branch);
   const co = company[d.branch] || company.pune;
   const bank = isDubai ? (company.dubaiBank || company.bank) : company.bank;
   const doc = new jsPDF({ unit: 'pt', format: 'a4' });

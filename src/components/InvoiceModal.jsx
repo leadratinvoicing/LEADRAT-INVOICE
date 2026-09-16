@@ -8,7 +8,7 @@ import {
 } from '../constants';
 import {
   dateToInput, fmtMoneyForRegion, itemTaxBreakdown, MONEY_EPS, nextDocNumber, proformaState,
-  regionOf, round2
+  isUaeBranch, regionOf, round2
 } from '../utils';
 import {
   findDuplicateNumber, matchesSeriesFormat, seriesFormatHint, suggestDocNumber
@@ -107,10 +107,11 @@ export default function InvoiceModal({
   // populated from a draft while still behaving as a new document.
   const isConverting = !!convertFrom && !isEditing;
   const sourceDoc = editingDoc || prefillDoc || null;
-  const isDubai = branch === 'dubai';
+  // Dubai and Abu Dhabi share the UAE tax regime: TRN, VAT and AED.
+  const isDubai = isUaeBranch(branch);
 
   // Only the branches belonging to the chosen country — India offers Pune and
-  // Bengaluru, Dubai offers Dubai alone.
+  // Bengaluru, the UAE offers Dubai and Abu Dhabi.
   const branchChoices = BRANCHES.filter((b) => b.country === country);
 
   // Dubai wording: TRN instead of GSTIN, VAT instead of GST, AED amounts.
@@ -130,7 +131,7 @@ export default function InvoiceModal({
       const b = d.branch || 'pune';
       setDocType(d.docType);
       setBranch(b);
-      setCountry(b === 'dubai' ? 'dubai' : 'india');
+      setCountry(isUaeBranch(b) ? 'dubai' : 'india');
       setInvoiceNo(d.invoiceNo || '');
       setSuggestedNo(d.invoiceNo || '');
       setInvoiceDate(dateToInput(d.invoiceDate));
@@ -169,10 +170,10 @@ export default function InvoiceModal({
       setItems(Array.isArray(d.items) && d.items.length > 0 ? d.items.map(buildItem) : [buildItem(d)]);
 
       setGstType(d.gstType || 'cgst_sgst');
-      setGstRate(String(d.gstRate || (b === 'dubai' ? 5 : 18)));
+      setGstRate(String(d.gstRate || (isUaeBranch(b) ? 5 : 18)));
       setTdsRate(String(d.tdsRate || 0));
       setTdsStatus(d.tdsStatus || 'pending');
-      setPayMode(d.paymentMode || (b === 'dubai' ? 'BANK TRANSFER' : 'UPI'));
+      setPayMode(d.paymentMode || (isUaeBranch(b) ? 'BANK TRANSFER' : 'UPI'));
       setStatus(d.docType === 'proforma' ? 'due' : (d.status || 'paid'));
       // The balance is typed by hand, so it is loaded back exactly as saved.
       const out = (d.docType === 'proforma' || d.status !== 'due') ? '' : d.amountDueOutstanding;
@@ -245,12 +246,13 @@ export default function InvoiceModal({
   function onCountryChange(next) {
     setCountry(next);
     if (next === 'dubai') {
-      setBranch('dubai');
+      // Two UAE branches now, so keep whichever is already chosen.
+      setBranch((b) => (isUaeBranch(b) ? b : 'dubai'));
       setGstType('igst'); // the IGST slot carries the single VAT line
       setGstRate('5');
       setPayMode((m) => (!m || ['UPI', 'NEFT', 'RTGS'].includes(m) ? 'BANK TRANSFER' : m));
     } else {
-      setBranch((b) => (b === 'dubai' ? 'pune' : b));
+      setBranch((b) => (isUaeBranch(b) ? 'pune' : b));
       setGstRate((r) => (String(r) === '5' ? '18' : r));
       setGstType((t) => (t === 'igst' ? 'cgst_sgst' : t));
       setPayMode((m) => (m === 'BANK TRANSFER' ? 'UPI' : m));
@@ -647,12 +649,12 @@ export default function InvoiceModal({
           <label className="form-label">Country <span className="req">*</span></label>
           <select className="form-input" value={country} onChange={(e) => onCountryChange(e.target.value)}>
             <option value="india">🇮🇳 India</option>
-            <option value="dubai">🇦🇪 Dubai</option>
+            <option value="dubai">🇦🇪 UAE</option>
           </select>
         </div>
         <div className="form-group">
           <label className="form-label">Branch <span className="req">*</span></label>
-          <select className="form-input" value={branch} disabled={isDubai} onChange={(e) => setBranch(e.target.value)}>
+          <select className="form-input" value={branch} onChange={(e) => setBranch(e.target.value)}>
             {branchChoices.map((b) => <option key={b.value} value={b.value}>{b.name}</option>)}
           </select>
         </div>

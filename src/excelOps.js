@@ -91,6 +91,8 @@ export async function readSheetRows(file, opts) {
 /** Branch strings people actually type in spreadsheets, mapped to our keys. */
 export function normaliseBranch(raw) {
   const b = String(raw || 'pune').toLowerCase();
+  // Checked before Dubai: an "Abu Dhabi" cell must not fall through to it.
+  if (b.includes('abu') || b.includes('auh') || b === 'ad') return 'abudhabi';
   if (b.includes('dubai') || b.includes('dxb') || b === 'dbx') return 'dubai';
   if (b.includes('beng') || b.includes('blr')) return 'bengaluru';
   return 'pune';

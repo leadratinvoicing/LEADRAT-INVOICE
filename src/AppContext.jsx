@@ -410,6 +410,9 @@ export function AppProvider({ children }) {
       const merged = { ...savedCompany };
       if (!merged.dubai) merged.dubai = DEFAULT_COMPANY.dubai;
       if (!merged.dubaiBank) merged.dubaiBank = DEFAULT_COMPANY.dubaiBank;
+      // Abu Dhabi bills as the same UAE entity, so an install that predates it
+      // inherits whatever Dubai is currently set to rather than the factory text.
+      if (!merged.abudhabi) merged.abudhabi = { ...(merged.dubai || DEFAULT_COMPANY.abudhabi) };
       setCompany(merged);
       ref.current.company = merged;
     }
@@ -447,6 +450,19 @@ export function AppProvider({ children }) {
     if (!rolesToUse || rolesToUse.length === 0) {
       rolesToUse = buildSeedRoles();
       try { await Store.set('roles', rolesToUse); } catch (e) { console.warn('[init] role seeding failed', e); }
+    }
+
+    // One-off rename of a seeded role. Only applies while it still carries the
+    // exact name it was seeded with, so a role an admin has already renamed is
+    // never overwritten. Harmless to re-run: the guard stops matching after it.
+    const RENAMED_SEEDS = [{ id: 'role_sales_rep', was: 'Sales Executive', now: 'Sales Manager' }];
+    const needsRename = rolesToUse.some((r) => RENAMED_SEEDS.some((x) => r.id === x.id && r.name === x.was));
+    if (needsRename) {
+      rolesToUse = rolesToUse.map((r) => {
+        const hit = RENAMED_SEEDS.find((x) => r.id === x.id && r.name === x.was);
+        return hit ? { ...r, name: hit.now } : r;
+      });
+      try { await Store.set('roles', rolesToUse); } catch (e) { console.warn('[init] role rename failed', e); }
     }
     setRoles(rolesToUse); ref.current.roles = rolesToUse;
 
