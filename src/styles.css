@@ -399,3 +399,33 @@ tr.client-docs-row>td{padding:0;background:#F9FAFB;border-bottom:2px solid var(-
 .audit-rel{font-size:9px;color:var(--muted);margin-top:1px}
 .audit-action{display:inline-block;font-size:9.5px;font-weight:600;color:var(--brand-dark);background:var(--brand-light);border-radius:10px;padding:2px 8px}
 .audit-details{font-size:10px;color:var(--text);line-height:1.5;word-break:break-word}
+
+/* ---------------- APP TOUR ----------------
+   Sits above dialogs (1000) but below toasts (2000), so an error raised while
+   the tour is running is still readable. The dimming is painted by the hole's
+   own outsized shadow, which keeps the spotlight and the dim in one layer and
+   perfectly in register. */
+.tour-root{position:fixed;inset:0;z-index:1800}
+.tour-backdrop{position:absolute;inset:0;background:rgba(15,23,42,0.55)}
+.tour-backdrop.has-hole{background:transparent}
+.tour-hole{position:fixed;border-radius:8px;box-shadow:0 0 0 9999px rgba(15,23,42,0.55),0 0 0 2px var(--brand-dark) inset;pointer-events:none;transition:left .18s ease,top .18s ease,width .18s ease,height .18s ease}
+.tour-card{position:fixed;width:340px;max-width:calc(100vw - 24px);background:#fff;border-radius:12px;box-shadow:0 18px 44px rgba(0,0,0,0.28);padding:16px 16px 12px;animation:slideIn .2s ease}
+.tour-arrow{position:absolute;width:0;height:0;border-left:8px solid transparent;border-right:8px solid transparent}
+.tour-arrow.up{top:-8px;border-bottom:8px solid #fff}
+.tour-arrow.down{bottom:-8px;border-top:8px solid #fff}
+.tour-step-count{font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--brand-dark);margin-bottom:5px}
+.tour-title{font-size:14px;font-weight:700;color:var(--text);margin-bottom:6px}
+.tour-body{font-size:11px;line-height:1.6;color:var(--muted)}
+.tour-dots{display:flex;gap:5px;margin:14px 0 10px}
+.tour-dot{width:6px;height:6px;border-radius:50%;background:var(--border)}
+.tour-dot.done{background:var(--brand-light)}
+.tour-dot.active{background:var(--brand-dark);width:16px;border-radius:3px}
+.tour-actions{display:flex;align-items:center;justify-content:space-between;gap:8px;border-top:1px solid var(--border);padding-top:10px}
+.tour-actions-right{display:flex;gap:8px;margin-left:auto}
+.tour-skip{background:none;border:none;padding:0;font-size:10px;color:var(--muted);cursor:pointer;text-decoration:underline}
+.tour-skip:hover{color:var(--text)}
+.tour-help-btn{padding-left:9px;padding-right:9px}
+@media (max-width:640px){
+  .tour-card{width:calc(100vw - 24px)}
+  .tour-arrow{display:none}
+}

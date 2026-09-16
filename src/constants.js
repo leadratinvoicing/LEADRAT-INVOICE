@@ -353,7 +353,9 @@ export const AUDIT_ACTIONS = [
   { key: 'user_signup', label: 'Account self-registered', icon: '🆕', group: 'Access' },
   { key: 'password_changed', label: 'Password changed', icon: '🔒', group: 'Access' },
   { key: 'password_reset_sent', label: 'Password reset sent', icon: '✉️', group: 'Access' },
-  { key: 'template_downloaded', label: 'Template downloaded', icon: '📋', group: 'Settings' }
+  { key: 'template_downloaded', label: 'Template downloaded', icon: '📋', group: 'Settings' },
+  { key: 'tour_completed', label: 'Finished the app tour', icon: '🎓', group: 'Access' },
+  { key: 'tour_replayed', label: 'Replayed the app tour', icon: '🧭', group: 'Access' }
 ];
 
 export const AUDIT_ACTION_MAP = AUDIT_ACTIONS.reduce((m, a) => { m[a.key] = a; return m; }, {});

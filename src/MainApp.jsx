@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from './AppContext';
 import { LOGO_DATA_URI } from './logo';
 import { signOutFirebase } from './auth';
@@ -36,6 +36,8 @@ import ForcePasswordModal from './components/ForcePasswordModal';
 import UserDetailsModal from './components/UserDetailsModal';
 import TdsModal from './components/TdsModal';
 import DocumentPreviewModal from './components/DocumentPreviewModal';
+import AppTour from './components/AppTour';
+import { stepsFor } from './tour';
 
 const NAV = [
   { page: 'dashboard', label: 'Dashboard', perm: 'dashboard' },
@@ -106,6 +108,55 @@ export default function MainApp() {
     showToast('You do not have permission to ' + what, 'error');
     return false;
   }, [showToast]);
+
+  /* ---------------- APP TOUR ----------------
+     Shown once, unskippably, the first time someone signs in, and on demand
+     from ❓ Help after that. Completion is stored on the user profile so it
+     follows them across devices; localStorage is the fallback for accounts
+     with no profile record (the built-in admin) and stops the tour
+     reappearing in the moment before a profile write lands. */
+  const [tour, setTour] = useState({ open: false, mandatory: false });
+  const tourAutoRef = useRef(false);
+
+  const tourKey = 'leadrat:tourDone:' + ((currentUser && currentUser.email) || '');
+  const tourDoneLocally = () => {
+    try { return !!localStorage.getItem(tourKey); } catch (e) { return false; }
+  };
+
+  const tourSteps = useMemo(() => stepsFor(can, isAdmin), [can, isAdmin]);
+
+  /* The forced password change comes first — the tour would only be in its way. */
+  useEffect(() => {
+    if (!currentUser || tourAutoRef.current) return;
+    const heldForPassword = currentUser.role !== 'admin' && !!currentUser.mustChangePassword &&
+      currentUser.authProvider !== 'google';
+    if (heldForPassword) return;
+    if (currentUser.tourCompletedAt || tourDoneLocally()) { tourAutoRef.current = true; return; }
+    tourAutoRef.current = true;
+    setTour({ open: true, mandatory: true });
+  }, [currentUser]);
+
+  const startTour = useCallback(() => setTour({ open: true, mandatory: false }), []);
+
+  /**
+   * `completed` is false when a replay is closed part-way — that records
+   * nothing, so a half-watched replay never counts as the first run.
+   */
+  const finishTour = useCallback(async (completed) => {
+    const wasFirstRun = tour.mandatory;
+    setTour({ open: false, mandatory: false });
+    if (!completed) return;
+    const stamp = new Date().toISOString();
+    try { localStorage.setItem(tourKey, stamp); } catch (e) { /* private mode — profile still records it */ }
+    logActivity(wasFirstRun ? 'tour_completed' : 'tour_replayed', { steps: tourSteps.length });
+    if (!currentUser || !currentUser.email) return;
+    try {
+      await updateUsers((latest) => latest.map((u) => (sameEmail(u.email, currentUser.email)
+        ? { ...u, tourCompletedAt: u.tourCompletedAt || stamp }
+        : u)));
+      refreshSessionUser();
+    } catch (e) { console.warn('Could not record tour completion', e); }
+  }, [tour.mandatory, tourKey, tourSteps.length, currentUser, updateUsers, refreshSessionUser, logActivity]);
 
   /* ---------------- NAVIGATION ---------------- */
   /**
@@ -1079,6 +1130,7 @@ export default function MainApp() {
               <button
                 key={item.page}
                 className={'nav-btn' + (page === item.page ? ' active' : '')}
+                data-tour={'nav-' + item.page}
                 onClick={() => navigate(item.page)}
               >
                 {item.label}
@@ -1090,6 +1142,14 @@ export default function MainApp() {
           <span className="user-badge">
             {currentUser.role === 'admin' ? 'Admin: ' + currentUser.name : currentUser.name}
           </span>
+          <button
+            className="btn btn-secondary btn-sm tour-help-btn"
+            data-tour="help"
+            onClick={startTour}
+            title="Take the app tour again"
+          >
+            ❓ Help
+          </button>
           <button className="btn btn-secondary btn-sm" onClick={doSignOut}>Sign Out</button>
         </div>
       </div>
@@ -1252,6 +1312,14 @@ export default function MainApp() {
         }}
         onDownloadWord={() => downloadPreviewed('word')}
         onDownloadPdf={() => downloadPreviewed('pdf')}
+      />
+
+      <AppTour
+        open={tour.open}
+        steps={tourSteps}
+        mandatory={tour.mandatory}
+        onNavigate={navigate}
+        onFinish={finishTour}
       />
     </div>
   );

@@ -246,14 +246,16 @@ export default function InvoiceListPage({
         </div>
         <div className="page-actions">
           {may('export') && (
-            <ExportMenu
-              count={list.length}
-              disabled={list.length === 0}
-              onExport={(fmt) => onExport(docType, fmt, list)}
-            />
+            <span data-tour="export">
+              <ExportMenu
+                count={list.length}
+                disabled={list.length === 0}
+                onExport={(fmt) => onExport(docType, fmt, list)}
+              />
+            </span>
           )}
           {may('create') && (
-            <button className="btn btn-primary" onClick={() => onNew(docType)}>+ New {isInvoice ? 'Invoice' : 'Proforma'}</button>
+            <button className="btn btn-primary" data-tour="new-doc" onClick={() => onNew(docType)}>+ New {isInvoice ? 'Invoice' : 'Proforma'}</button>
           )}
         </div>
       </div>
@@ -373,7 +375,7 @@ export default function InvoiceListPage({
                     <Fragment key={c.key}>{c.render(d, rowCtx)}</Fragment>
                   ))}
                   <td>
-                    <div className="actions-cell">
+                    <div className="actions-cell" data-tour="row-actions">
                       {!isInvoice && mayCreateInvoice && (
                         pro.unbilled > MONEY_EPS ? (
                           <button
