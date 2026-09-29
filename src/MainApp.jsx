@@ -828,8 +828,22 @@ export default function MainApp() {
 
   async function confirmImport() {
     if (!pendingImport) return;
+    // Numbers must be unique, so the check has to be made against the server
+    // rather than this browser's copy — a stale copy reports a number as free.
+    let baseInvoices;
+    try {
+      baseInvoices = await fetchFreshInvoices();
+    } catch (e) {
+      console.error('[import] could not confirm existing numbers', e);
+      return showToast('Cannot reach the database to check for existing invoice numbers. '
+        + 'Nothing was imported — check your connection and try again.', 'error');
+    }
     const nextClients = [...stateRef.current.clients];
-    const nextInvoices = [...stateRef.current.invoices];
+    const nextInvoices = [...baseInvoices];
+    // Every number already issued, so the sheet cannot reissue one.
+    const takenNumbers = new Set(
+      baseInvoices.map((d) => String(d.invoiceNo || '').trim().toLowerCase()).filter(Boolean)
+    );
 
     // Rows sharing an invoice_no become one multi-item invoice: shared fields
     // (client, branch, dates) come from the FIRST row, and each row contributes
@@ -845,8 +859,11 @@ export default function MainApp() {
       groups.get(key).push(r);
     }
 
-    let added = 0, mergedItems = 0;
+    let added = 0, mergedItems = 0, duplicates = 0;
     for (const invoiceNo of orderedInvoiceNos) {
+      // A number already on record is never re-imported: re-running a sheet
+      // must not raise a second document carrying the same number.
+      if (takenNumbers.has(invoiceNo.trim().toLowerCase())) { duplicates++; continue; }
       const rowsForInvoice = groups.get(invoiceNo);
       const first = rowsForInvoice[0];
 
@@ -959,6 +976,8 @@ export default function MainApp() {
         createdBy: (currentUser && (currentUser.name || currentUser.email)) || '',
         createdByEmail: (currentUser && currentUser.email) || ''
       });
+      // Claim it as we go, so two groups in one sheet cannot both take it.
+      takenNumbers.add(invoiceNo.trim().toLowerCase());
       added++;
     }
 
@@ -966,9 +985,11 @@ export default function MainApp() {
     await saveClients(nextClients);
     setPendingImport(null);
     const mergeMsg = mergedItems > 0 ? ' · ' + mergedItems + ' extra rows merged as line-items' : '';
-    logActivity('invoices_imported', { count: added, note: skipped ? skipped + ' rows skipped' : '' });
-    showToast('Imported ' + added + ' invoice' + (added === 1 ? '' : 's') + mergeMsg +
-      (skipped ? ' (' + skipped + ' rows skipped for missing invoice_no/client)' : ''));
+    logActivity('invoices_imported', { count: added, duplicates, note: skipped ? skipped + ' rows skipped' : '' });
+    const dupMsg = duplicates ? ' · ' + duplicates + ' skipped — that number is already on record' : '';
+    showToast('Imported ' + added + ' invoice' + (added === 1 ? '' : 's') + mergeMsg + dupMsg +
+      (skipped ? ' (' + skipped + ' rows skipped for missing invoice_no/client)' : ''),
+      duplicates && !added ? 'warn' : 'success');
     navigate('invoices');
   }
 

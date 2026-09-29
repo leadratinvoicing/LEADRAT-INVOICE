@@ -183,6 +183,7 @@ export default function SettingsPage() {
 
     const next = { ...numbering };
     const seen = new Map();
+    const allPrefixes = [];
     for (const s of NUMBER_SERIES) {
       const prefix = String(numDraft[s.prefixKey] || '').trim();
       const suffix = String(numDraft[s.suffixKey] || '').trim();
@@ -197,11 +198,28 @@ export default function SettingsPage() {
       const sig = prefix + '|' + suffix;
       if (seen.has(sig)) return showToast('"' + prefix + '" is already used by ' + seen.get(sig) + '. Give each series its own prefix.', 'error');
       seen.set(sig, s.label);
+      allPrefixes.push({ prefix, label: s.label });
 
       next[s.prefixKey] = prefix;
       next[s.suffixKey] = suffix;
       next[s.padKey] = padLen;
       next[s.nextKey] = nextNo;
+    }
+
+    /* One prefix may open another — DSL/26-27/DB- opens DSL/26-27/DB-PI- — and
+       that is fine, because a series claims a number only when its prefix is
+       followed by digits and nothing else. It stops being fine when the longer
+       prefix CONTINUES with a digit: DSL/26-27/DB- and DSL/26-27/DB-9 would both
+       claim DSL/26-27/DB-9001, and neither counter could be trusted again. */
+    for (const a of allPrefixes) {
+      for (const b of allPrefixes) {
+        if (a === b || b.prefix.length <= a.prefix.length) continue;
+        if (!b.prefix.toLowerCase().startsWith(a.prefix.toLowerCase())) continue;
+        if (!/^\d/.test(b.prefix.substring(a.prefix.length))) continue;
+        return showToast('"' + b.prefix + '" (' + b.label + ') continues "' + a.prefix + '" ('
+          + a.label + ') with a digit, so the two series could not be told apart. '
+          + 'Change one of them.', 'error');
+      }
     }
 
     try {

@@ -7,6 +7,7 @@ import {
   IDLE_RESYNC_MS
 } from './constants';
 import { buildSeedRoles, deepClone, resolveUserSession } from './utils';
+import { repairOverlappedCounters } from './numbering';
 
 const AppContext = createContext(null);
 
@@ -439,6 +440,22 @@ export function AppProvider({ children }) {
       if (!numberingToUse.nextProDbx) numberingToUse.nextProDbx = DEFAULT_NUMBERING.nextProDbx;
       await Store.set('numbering', numberingToUse);
     }
+    /* One-off repair for counters that a prefix overlap dragged forward.
+       'DSL/26-27/DB-' is the opening of 'DSL/26-27/DB-PI-', and until series
+       membership was made strict every Dubai proforma also counted as a Dubai
+       tax invoice — leaving both series showing the same next number. This only
+       rewinds where the overlap accounts for the gap, and is a no-op once done. */
+    {
+      const repaired = repairOverlappedCounters(numberingToUse, inv || []);
+      if (repaired !== numberingToUse) {
+        numberingToUse = repaired;
+        try {
+          await Store.set('numbering', numberingToUse);
+          console.log('[init] Repaired document counters dragged forward by an overlapping prefix.');
+        } catch (e) { console.warn('[init] counter repair could not be saved', e); }
+      }
+    }
+
     setNumbering(numberingToUse); ref.current.numbering = numberingToUse;
 
     const dp = savedDeptPerms || deepClone(DEFAULT_DEPT_PERMISSIONS);
